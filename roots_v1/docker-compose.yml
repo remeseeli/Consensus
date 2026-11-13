@@ -1,0 +1,76 @@
+services:
+  db:
+    image: mariadb:11.7
+    container_name: wiki_mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-root_secret_change_me}
+      MARIADB_DATABASE: ${DB_NAME:-wiki_rag}
+      MARIADB_USER: ${DB_USER:-wiki_user}
+      MARIADB_PASSWORD: ${DB_PASSWORD:-wiki_pass}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  backend:
+    build:
+      context: ./backend
+    container_name: wiki_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-wiki_rag}
+      DB_USER: ${DB_USER:-wiki_user}
+      DB_PASSWORD: ${DB_PASSWORD:-wiki_pass}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-local}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-384}
+      LLM_PROVIDER: ${LLM_PROVIDER:-auto}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      TOPIC_CACHE_TTL_HOURS: ${TOPIC_CACHE_TTL_HOURS:-24}
+      RAG_TOP_K: ${RAG_TOP_K:-6}
+    ports:
+      - "8000:8000"
+
+  ingest:
+    build:
+      context: ./backend
+    profiles: ["ingest"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-wiki_rag}
+      DB_USER: ${DB_USER:-wiki_user}
+      DB_PASSWORD: ${DB_PASSWORD:-wiki_pass}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-local}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+    command: ["python", "ingest.py", "--expand-links", "1", "--max-linked", "2"]
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: wiki_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+
+volumes:
+  mariadb_data:
