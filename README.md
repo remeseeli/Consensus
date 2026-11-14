@@ -26,6 +26,7 @@ Consensus connects matching articles across Wikipedia editions via **Wikidata Q-
    - **Outdated information** — Stale edition timestamps or lagging year references.
 4. **In-Page DOM Highlighting & Click-to-Edit:** Clicking any flagged language or **Find in Wikipedia** opens the article tab, scrolls to the disputed passage, highlights it in red (`#fee7e6` / `#d33`) with an inline note, and lets editors click the highlighted passage to jump directly to the Wikipedia section editor (`?action=edit`).
 5. **Inline Phrase Translation & Saved Queue:** Translates flagged non-English snippets into English inside the Side Panel and lets editors bookmark articles to a persistent **Saved** queue to fix later.
+6. **Optional AI Quick Summary (Side Feature):** When connected to the backend, an optional Gemini summary runs in the background to give a 1–2 sentence overview grounded strictly in the already-detected issue boxes without altering issue cards or collapsing expanded items. It can be hidden or shown anytime (inline or via Settings) while still running in the background, and displays a note reminding readers that quick AI summaries may contain mistakes.
 
 ---
 
@@ -43,8 +44,8 @@ Consensus supports cross-lingual scanning across **17 selectable Wikipedia editi
 | `fr` | French | `zh` | Chinese | — | — |
 
 - **Dynamic Top-5 Longest Editions:** When enabled in Settings (*"Also include 5 longest Wikipedia editions per article"*), Consensus automatically probes article lengths across additional Wikipedia editions per Wikidata Q-ID and includes the 5 longest editions alongside your selected languages.
-- **Offline Fallback Dataset:** Includes a built-in fallback dataset covering 9 editions (`FI`, `SV`, `RU`, `EN`, `ET`, `ES`, `ZH`, `PL`, `HU`) so the UI and page highlighting continue to work even when offline.
-- **Companion Backend (`backend/`):** Currently provides deep server-side semantic comparison (Gemini), academic citation verification, and localized `<ref>` formatting focused on the trilingual core (`FI`, `SV`, `RU`, plus `EN` citation templates).
+- **Offline Fallback Dataset:** Includes a built-in fallback dataset covering 9 editions (`FI`, `SV`, `RU`, `EN`, `ET`, `ES`, `ZH`, `PL`, `HU`) so the UI and page highlighting continue to work even without internet or backend connectivity.
+- **Companion Backend (`backend/`):** Supports optional multi-language quick summaries (`POST /api/analyze/semantic`, up to 5 editions per request), alongside server-side discrepancy analysis, academic citation verification, and localized `<ref>` formatting centered on the trilingual core (`FI`, `SV`, `RU`, plus `EN` citation templates).
 
 ---
 
@@ -59,13 +60,13 @@ Consensus supports cross-lingual scanning across **17 selectable Wikipedia editi
 - **Backend API (`backend/` — optional):**
   - **Node.js 22+ & TypeScript** (`tsx` for dev watch mode, `tsc` for builds)
   - **Express** REST API with CORS support for `chrome-extension://`, `moz-extension://`, and `*.wikipedia.org`
-  - **Gemini AI (`@google/genai`, `gemini-2.5-flash`)** for structured JSON semantic comparison, with a deterministic heuristic fallback when no API key is configured
+  - **Gemini AI (`@google/genai`, optional side feature):** Generates quick cross-lingual summaries (`gemini-3.8-flash` default in code, configurable via `GEMINI_MODEL`) grounded in detected issue boxes, while all core issue boxes run deterministically in the browser/heuristic scanner
   - **Academic & Archival Verification:** Crossref, OpenAlex, Semantic Scholar, Google Books, SSRF-safe link health checker, and Internet Archive Wayback Machine recovery
   - **Rate Limiting:** Custom token-bucket rate limiters and retry/backoff per external host
 - **Database (`db/` — optional):**
   - **MariaDB 11.4+** (`InnoDB`, `utf8mb4_unicode_ci`) via `mysql2`
   - Composite ranking indexes, `FULLTEXT` multilingual search, and SHA-256 keyed TTL response caches
-- **Containerization:** Docker & Docker Compose (`docker-compose.yml`)
+- **Cloud Deployment & Containerization:** Docker & Docker Compose (`docker-compose.yml`), plus GitHub Actions CI/CD (`.github/workflows/backend-pipeline.yml`) pushing container images to GHCR and deploying to Azure App Service (`DEFAULT_API_BASE_URL` in `extension/src/shared/constants.js` defaults to the hosted Azure backend)
 
 ---
 
@@ -88,7 +89,7 @@ Consensus supports cross-lingual scanning across **17 selectable Wikipedia editi
 │                 │ Wikidata APIs OR     │ - Red (#fee7e6 / #d33) Highlight  │  │
 │                 │ Optional REST JSON   │ - Inline Note & Click-to-Edit     │  │
 └─────────────────┼──────────────────────┴───────────────────────────────────┘  ┘
-                  │  (Optional: http://localhost:4000/api)
+                  │  (Optional: Cloud Azure Backend or http://localhost:4000/api)
                   ▼
 ┌───────────────────────────────────────────────────────────────────────────────┐
 │                 EXPRESS + TYPESCRIPT BACKEND API (backend/)                   │
@@ -96,7 +97,7 @@ Consensus supports cross-lingual scanning across **17 selectable Wikipedia editi
 │  - Token-Bucket Rate Limiters & Retry/Backoff per External Host               │
 │  - MediaWiki Action API + Wikidata Q-ID Batch Linker                          │
 │  - Wikitext <ref> Density, Infobox & Citation-Needed Tag Parser               │
-│  - LLM Semantic Comparator (Gemini @google/genai + Heuristic Fallback)        │
+│  - Optional AI Quick Summary (@google/genai) + Heuristic Comparator           │
 │  - Academic Verifier (Crossref · OpenAlex · Semantic Scholar · Google Books)  │
 │  - SSRF-Safe Link Health Checker + Wayback Machine Recovery                   │
 └─────────────────┬─────────────────────────────────────────────────────────────┘
@@ -118,9 +119,9 @@ Consensus supports cross-lingual scanning across **17 selectable Wikipedia editi
 
 You can run **Consensus** in seconds as a standalone browser extension, or run the full stack with the backend API and MariaDB.
 
-### Option A — Extension Only (Fastest, No Backend or Docker Required)
+### Option A — Extension Only (Fastest, No Local Server or Docker Required)
 
-The extension includes a direct browser scanner (`extension/src/shared/liveBrowserScanner.js`) that queries Wikipedia, Wikidata, and Wikimedia Pageviews directly over HTTPS—no build tools, database, or server setup needed.
+The extension includes a direct browser scanner (`extension/src/shared/liveBrowserScanner.js`) that queries Wikipedia, Wikidata, and Wikimedia Pageviews directly over HTTPS—so search, dashboard ranking, and all issue boxes work even if the backend is offline (with `demoFallback.js` as a final offline backup). By default, `DEFAULT_API_BASE_URL` in [`extension/src/shared/constants.js`](extension/src/shared/constants.js) points to the hosted Azure backend for the optional AI quick summary.
 
 1. Clone this repository:
    ```bash
@@ -131,7 +132,7 @@ The extension includes a direct browser scanner (`extension/src/shared/liveBrows
 3. Enable **Developer mode** (top-right toggle).
 4. Click **Load unpacked** and select the `extension/` directory in this repository.
 5. Click the **Consensus** icon in the browser toolbar to open the **Side Panel**.
-6. Click the menu icon inside the search bar to select any combination of the **17 supported languages** and toggle **Also include 5 longest Wikipedia editions per article**.
+6. Click the gear icon inside the search bar to select any combination of the **17 supported languages**, toggle **Also include 5 longest Wikipedia editions per article**, or toggle **Show AI semantic summary** (when hidden, summaries still run silently in the background).
 
 ---
 
@@ -151,7 +152,7 @@ Run MariaDB 11.4 and the Express/TypeScript backend in containers alongside the 
    ```
    - **MariaDB** initializes [`db/schema.sql`](db/schema.sql) and seeds reference data from [`db/seed.sql`](db/seed.sql) on port `3306`.
    - **Backend API** listens on `http://localhost:4000` (verify with `http://localhost:4000/api/health`).
-3. Load the `extension/` folder via `chrome://extensions` as described in **Option A**.
+3. If you want the extension to talk to your local backend instead of the hosted Azure backend, set `DEFAULT_API_BASE_URL` in [`extension/src/shared/constants.js`](extension/src/shared/constants.js) to `'http://localhost:4000/api'`, then load/reload the `extension/` folder via `chrome://extensions` as described in **Option A**.
 
 ---
 
@@ -179,7 +180,7 @@ Run [`db/schema.sql`](db/schema.sql) and [`db/seed.sql`](db/seed.sql) against yo
   Copy-Item .env.example .env
   ```
 
-Edit `backend/.env` with your MariaDB credentials and optional `GEMINI_API_KEY`.
+Edit `backend/.env` with your MariaDB credentials and optional `GEMINI_API_KEY` / `GEMINI_MODEL` (plus optional `ACADEMIC_CONTACT_EMAIL`, `GOOGLE_BOOKS_API_KEY`, `SEMANTIC_SCHOLAR_API_KEY`, and `WIKIMEDIA_USER_AGENT`).
 
 **3. Install dependencies and start the dev server:**
 ```bash
@@ -216,7 +217,7 @@ Follow **Option A** to load `extension/` into your browser. When you edit files 
 │   ├── package.json
 │   ├── .env.example
 │   └── src/
-│       ├── routes/api.ts       # /api/health, /api/search, /api/articles/:qid/analyze, /api/verify-claim, /api/citations/format
+│       ├── routes/api.ts       # /api/health, /api/search, /api/articles/:qid/analyze, /api/analyze/semantic, /api/verify-claim, /api/citations/format
 │       ├── services/           # MediaWiki, Gemini/heuristic comparator, academic verifier, link checker, citation formatter
 │       ├── db/                 # mysql2 connection pool & repository queries
 │       └── utils/              # Token-bucket rate limiters & retry helpers
@@ -230,10 +231,11 @@ Follow **Option A** to load `extension/` into your browser. When you edit files 
 
 ## 7. Backend API & Scoring Reference
 
-### REST Endpoints (`http://localhost:4000/api`)
-- `GET /api/health` — Database connection status and active LLM/heuristic mode
+### REST Endpoints (`http://localhost:4000/api` or hosted Azure URL)
+- `GET /api/health` — Database connection status and active LLM/model configuration
 - `GET /api/search?q=<topic>&filter=all|hard_fact|missing_citation|outdated_data` — Cross-lingual topic search and ranked article summary
 - `GET /api/articles/:qid/analyze` — Detailed discrepancy report for a Wikidata Q-ID (e.g. `Q104318`)
+- `POST /api/analyze/semantic` — Optional quick AI summary across selected Wikipedia editions, grounded in supplied `detectedIssues`
 - `POST /api/verify-claim` — Crossref, OpenAlex, Semantic Scholar, and Google Books verification for a claim
 - `POST /api/citations/format` — Generates localized Wikipedia `<ref>` templates (`fi`, `sv`, `ru`, `en`)
 
