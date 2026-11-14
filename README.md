@@ -1,3 +1,6 @@
+> [!NOTE]
+> **For Reviewers:** To install the browser extension directly, download and extract [`DEMO.zip`](DEMO.zip), then open `chrome://extensions`, enable **Developer mode**, and click **Load unpacked** on the extracted folder.
+
 # Consensus — Cross-Lingual Wikipedia Fact-Checking & Discrepancy Workbench
 
 **Consensus** is a Manifest V3 browser extension and optional Node.js/TypeScript + MariaDB backend that helps Wikipedia editors and researchers detect factual discrepancies, citation imbalances, outdated claims, and non-neutral (emotional) framing across multiple language editions of Wikipedia—and jump straight to the exact passage to inspect or edit it.
@@ -243,3 +246,9 @@ Follow **Option A** to load `extension/` into your browser. When you edit files 
 In the extension's **Top Risk Dashboard**, high-traffic articles are scored by combining log-scaled daily pageviews with detected issue count and maximum discrepancy severity:
 
 $$\text{SpreadRisk} = \operatorname{round}\!\left(\log_{10}(\max(10, \text{dailyViews})) \cdot \left(1.15 \cdot \text{issueCount} + 1.35 \cdot \frac{\text{severity}}{100}\right) \cdot 10\right)$$
+
+---
+
+## 8. License
+
+This project is licensed under the **MIT License** — see [LICENSE](LICENSE) for details.
