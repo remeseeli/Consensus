@@ -768,3 +768,174 @@ body {
   color: #54595d;
   font-size: 13px;
 }
+
+/* ============================================================================
+   Navigation Tabs, Dashboard Views Pill & Saved Progress
+   ============================================================================ */
+.wb-nav-tabs {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.wb-nav-tab {
+  flex: 1;
+  padding: 5px 8px;
+  background-color: #f8f9fa;
+  border: 1px solid #c8ccd1;
+  color: #54595d;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: center;
+}
+
+.wb-nav-tab:hover,
+.wb-nav-tab.is-active {
+  background-color: #eaecf0;
+  color: #202122;
+  border-color: #72777d;
+}
+
+.wb-list-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.wb-list-header-row .wb-section-label {
+  margin-bottom: 0;
+}
+
+.wb-article-pills {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.wb-views-pill {
+  padding: 1px 6px;
+  background-color: #eaf3ff;
+  border: 1px solid #a3c2f5;
+  color: #2a4b8d;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.wb-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background-color: #ffffff;
+  border: 1px solid #a2a9b1;
+  color: #54595d;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.wb-icon-btn:hover {
+  background-color: #eaecf0;
+  color: #202122;
+  border-color: #72777d;
+}
+
+.wb-save-mini-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background-color: #ffffff;
+  border: 1px solid #a2a9b1;
+  color: #54595d;
+  cursor: pointer;
+}
+
+.wb-save-mini-btn:hover,
+.wb-save-mini-btn.is-saved {
+  background-color: #eaecf0;
+  color: #202122;
+  border-color: #72777d;
+}
+
+.wb-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 10px 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #a2a9b1;
+}
+
+.wb-detail-header .wb-detail-title {
+  margin: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+  flex: 1;
+  min-width: 0;
+}
+
+.wb-btn-bookmark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background-color: #ffffff;
+  border: 1px solid #a2a9b1;
+  color: #54595d;
+  cursor: pointer;
+}
+
+.wb-btn-bookmark:hover,
+.wb-btn-bookmark.is-saved {
+  background-color: #eaecf0;
+  color: #202122;
+  border-color: #72777d;
+}
+
+.wb-btn-search {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  padding: 0;
+  background-color: #ffffff;
+  border-color: #a2a9b1;
+  color: #54595d;
+  flex-shrink: 0;
+}
+
+.wb-btn-search:hover {
+  background-color: #eaecf0;
+  color: #202122;
+  border-color: #72777d;
+}
+
+.wb-btn:hover,
+.wb-btn-primary:hover,
+.wb-btn-find:hover,
+.wb-article-item:hover,
+.wb-ref-box--clickable:hover,
+.wb-claim-line--clickable:hover,
+.wb-claim-line--flagged.wb-claim-line--clickable:hover {
+  background-color: #eaecf0;
+  color: #202122;
+  border-color: #72777d;
+}
+
+.wb-ref-toggle:hover .wb-ref-title,
+.wb-mistake-toggle:hover .wb-mistake-heading {
+  color: #202122;
+}

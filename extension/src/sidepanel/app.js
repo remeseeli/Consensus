@@ -6,6 +6,8 @@ import {
 } from '../shared/constants.js';
 import { OFFLINE_ANALYSES, OFFLINE_ARTICLES } from '../shared/demoFallback.js';
 import {
+  computeSpreadRiskScore,
+  fetchHighTrafficRiskDashboard,
   getCachedBrowserAnalysis,
   searchLiveFromBrowser,
 } from '../shared/liveBrowserScanner.js';
@@ -16,6 +18,9 @@ import {
 
 const STORAGE_LANGS_KEY = 'wikibridge_selected_langs';
 const STORAGE_TOP5_KEY = 'wikibridge_include_top5';
+const STORAGE_SAVED_QUEUE_KEY = 'consensus_saved_queue_v1';
+const STORAGE_DASHBOARD_CACHE_KEY = 'consensus_dashboard_cache_v1';
+const DASHBOARD_CACHE_TTL_MS = 30 * 60 * 1000;
 
 function loadSelectedLangs() {
   try {
@@ -42,6 +47,70 @@ function loadIncludeTop5() {
   return true;
 }
 
+function loadSavedQueue() {
+  try {
+    const raw = localStorage.getItem(STORAGE_SAVED_QUEUE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') return parsed;
+    }
+  } catch {
+    // Ignore storage errors
+  }
+  return {};
+}
+
+function persistSavedQueue(queue) {
+  try {
+    localStorage.setItem(STORAGE_SAVED_QUEUE_KEY, JSON.stringify(queue));
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+function createBookmarkIconSvg(filled, size = 16) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', String(size));
+  svg.setAttribute('height', String(size));
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('fill', filled ? 'currentColor' : 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('d', 'M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z');
+  svg.appendChild(path);
+  return svg;
+}
+
+function loadDashboardCache() {
+  try {
+    const raw = localStorage.getItem(STORAGE_DASHBOARD_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && Array.isArray(parsed.articles) && Date.now() - parsed.ts < DASHBOARD_CACHE_TTL_MS) {
+      return parsed;
+    }
+  } catch {
+    // Ignore
+  }
+  return null;
+}
+
+function persistDashboardCache(articles, analysesMap) {
+  try {
+    localStorage.setItem(
+      STORAGE_DASHBOARD_CACHE_KEY,
+      JSON.stringify({ ts: Date.now(), articles, analyses: analysesMap })
+    );
+  } catch {
+    // Ignore
+  }
+}
+
 // Instant client-side caches so repeat queries and clicking articles take 0ms
 const clientSearchCache = new Map();
 const clientAnalysisCache = new Map();
@@ -52,8 +121,10 @@ let activeSearchToken = 0;
 const state = {
   apiBaseUrl: DEFAULT_API_BASE_URL,
   currentQuery: '',
+  activeTab: 'dashboard', // 'dashboard' | 'saved' | 'search'
   selectedLangs: loadSelectedLangs(),
   includeTopLongest: loadIncludeTop5(),
+  savedQueue: loadSavedQueue(),
   articles: [],
   selectedArticle: null,
   selectedAnalysis: null,
@@ -62,6 +133,10 @@ const state = {
 const els = {
   searchForm: document.getElementById('search-form'),
   inputTopicQuery: document.getElementById('input-topic-query'),
+  tabDashboard: document.getElementById('tab-dashboard'),
+  tabSaved: document.getElementById('tab-saved'),
+  savedCount: document.getElementById('saved-count'),
+  btnRefreshDashboard: document.getElementById('btn-refresh-dashboard'),
   btnSettings: document.getElementById('btn-settings'),
   settingsDropdown: document.getElementById('settings-dropdown'),
   settingsLangGrid: document.getElementById('settings-lang-grid'),
@@ -206,9 +281,16 @@ function getOfflineArticles(query) {
   );
 }
 
+function normalizeIssueBadge(badge) {
+  return String(badge || '')
+    .replace(/\s*\([^)]*\)\s*$/, '')
+    .trim();
+}
+
 function deriveIssueBadges(art) {
   if (Array.isArray(art.issueBadges) && art.issueBadges.length > 0) {
-    return art.issueBadges;
+    const normalized = art.issueBadges.map(normalizeIssueBadge).filter(Boolean);
+    if (normalized.length > 0) return [...new Set(normalized)];
   }
 
   const badges = [];
@@ -216,7 +298,7 @@ function deriveIssueBadges(art) {
     badges.push('Different information');
   }
   if (art.mismatchFlags?.neutralityBias) {
-    badges.push('Not neutral (emotional tone)');
+    badges.push('Not neutral');
   }
 
   const available = SUPPORTED_LANGS
@@ -228,7 +310,7 @@ function deriveIssueBadges(art) {
     const low = sorted[0];
     const high = sorted[sorted.length - 1];
     if (high.refs >= 6 && (high.refs >= low.refs * 2.5 || high.refs - low.refs >= 12)) {
-      badges.push(`Much fewer references (${low.code}: ${low.refs} vs ${high.code}: ${high.refs})`);
+      badges.push('Much fewer references');
     } else if (art.mismatchFlags?.missingCitation) {
       badges.push('Missing reference');
     }
@@ -240,7 +322,7 @@ function deriveIssueBadges(art) {
     badges.push('Outdated information');
   }
 
-  return badges.length > 0 ? badges : ['Different information'];
+  return badges.length > 0 ? [...new Set(badges)] : ['Different information'];
 }
 
 function classifyBadgeStyle(label) {
@@ -270,11 +352,164 @@ function resolveIssueLabel(disc) {
   return 'Different information';
 }
 
+function isArticleSaved(qid) {
+  return Boolean(qid && state.savedQueue[qid]);
+}
+
+function updateSavedUiCounts() {
+  const count = Object.keys(state.savedQueue).length;
+  if (els.savedCount) els.savedCount.textContent = String(count);
+}
+
+function updateNavTabsUI() {
+  if (els.tabDashboard) {
+    els.tabDashboard.classList.toggle('is-active', state.activeTab === 'dashboard');
+  }
+  if (els.tabSaved) {
+    els.tabSaved.classList.toggle('is-active', state.activeTab === 'saved');
+  }
+  if (els.btnRefreshDashboard) {
+    els.btnRefreshDashboard.classList.toggle('hidden', state.activeTab !== 'dashboard');
+  }
+}
+
+function toggleSaveArticle(article, analysis = null) {
+  if (!article?.qid) return false;
+  if (state.savedQueue[article.qid]) {
+    delete state.savedQueue[article.qid];
+    persistSavedQueue(state.savedQueue);
+    updateSavedUiCounts();
+    return false;
+  }
+
+  const resolvedAnalysis =
+    analysis ||
+    clientAnalysisCache.get(article.qid) ||
+    getCachedBrowserAnalysis(article.qid) ||
+    (OFFLINE_ANALYSES[article.qid]
+      ? {
+          article,
+          overallSummary: OFFLINE_ANALYSES[article.qid].overallSummary,
+          discrepancies: OFFLINE_ANALYSES[article.qid].discrepancies,
+        }
+      : null);
+
+  state.savedQueue[article.qid] = {
+    article,
+    analysis: resolvedAnalysis,
+    resolvedKeys: [],
+    savedAt: Date.now(),
+  };
+  persistSavedQueue(state.savedQueue);
+  updateSavedUiCounts();
+  return true;
+}
+
+function formatViewsCount(views) {
+  const n = Number(views || 0);
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M/day`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}K/day`;
+  if (n > 0) return `${n}/day`;
+  return '';
+}
+
+function getOfflineDashboardArticles() {
+  return OFFLINE_ARTICLES.map((art) => {
+    const spreadRiskScore = computeSpreadRiskScore(
+      art.dailyViews || 5000,
+      art.discrepancyCount || 1,
+      art.discrepancySeverity || 75
+    );
+    return { ...art, spreadRiskScore };
+  }).sort((a, b) => (b.spreadRiskScore || 0) - (a.spreadRiskScore || 0));
+}
+
+async function loadDashboard(forceRefresh = false) {
+  const token = ++activeSearchToken;
+  state.activeTab = 'dashboard';
+  state.currentQuery = '';
+  updateNavTabsUI();
+
+  els.viewDetail.classList.add('hidden');
+  els.viewList.classList.remove('hidden');
+
+  const cached = !forceRefresh ? loadDashboardCache() : null;
+  if (cached && cached.articles.length > 0) {
+    if (cached.analyses) {
+      for (const [qid, analysis] of Object.entries(cached.analyses)) {
+        clientAnalysisCache.set(qid, analysis);
+      }
+    }
+    state.articles = cached.articles;
+    els.loadingList.classList.add('hidden');
+    renderArticleList();
+    return;
+  }
+
+  // Show immediate baseline high-traffic articles while live pageviews + issues scan
+  if (!forceRefresh) {
+    state.articles = getOfflineDashboardArticles();
+    renderArticleList();
+  } else {
+    els.articlesContainer.innerHTML = '';
+  }
+
+  els.loadingList.classList.remove('hidden');
+
+  try {
+    const liveDashboard = await fetchHighTrafficRiskDashboard({
+      selectedLangs: state.selectedLangs,
+    });
+    if (token !== activeSearchToken || state.activeTab !== 'dashboard') return;
+
+    if (Array.isArray(liveDashboard) && liveDashboard.length > 0) {
+      state.articles = liveDashboard;
+      const analysesObj = {};
+      for (const art of liveDashboard) {
+        const a = getCachedBrowserAnalysis(art.qid);
+        if (a) analysesObj[art.qid] = a;
+      }
+      persistDashboardCache(liveDashboard, analysesObj);
+      renderArticleList();
+    }
+  } catch {
+    // Keep offline/baseline dashboard if offline
+  } finally {
+    if (token === activeSearchToken) {
+      els.loadingList.classList.add('hidden');
+    }
+  }
+}
+
+function showSavedView() {
+  activeSearchToken++;
+  state.activeTab = 'saved';
+  updateNavTabsUI();
+  els.viewDetail.classList.add('hidden');
+  els.viewList.classList.remove('hidden');
+  els.loadingList.classList.add('hidden');
+
+  const entries = Object.values(state.savedQueue).sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
+  state.articles = entries.map((e) => e.article);
+  for (const e of entries) {
+    if (e.analysis) clientAnalysisCache.set(e.article.qid, e.analysis);
+  }
+  renderArticleList();
+}
+
 async function runSearch() {
   const token = ++activeSearchToken;
   const q = state.currentQuery.trim();
-  const cacheKey = q.toLowerCase();
 
+  if (!q) {
+    loadDashboard(false);
+    return;
+  }
+
+  state.activeTab = 'search';
+  updateNavTabsUI();
+
+  const cacheKey = q.toLowerCase();
   els.viewDetail.classList.add('hidden');
   els.viewList.classList.remove('hidden');
 
@@ -285,14 +520,7 @@ async function runSearch() {
     return;
   }
 
-  if (!q && Date.now() < backendDownUntil) {
-    state.articles = OFFLINE_ARTICLES;
-    els.loadingList.classList.add('hidden');
-    renderArticleList();
-    return;
-  }
-
-  if (q && state.selectedLangs.length === 0 && !state.includeTopLongest) {
+  if (state.selectedLangs.length === 0 && !state.includeTopLongest) {
     state.articles = [];
     els.loadingList.classList.add('hidden');
     showError('Select at least one language or enable the 5 longest editions in Settings.');
@@ -305,32 +533,16 @@ async function runSearch() {
 
   let resolvedArticles = null;
 
-  // For topic searches, run the fast live scanner with user-selected languages + dynamic top-5 longest editions.
-  if (q) {
-    try {
-      const liveArticles = await searchLiveFromBrowser(q, {
-        selectedLangs: state.selectedLangs,
-        includeTopLongest: state.includeTopLongest,
-      });
-      if (Array.isArray(liveArticles) && liveArticles.length > 0) {
-        resolvedArticles = liveArticles;
-      }
-    } catch {
-      // Fallback below if offline
+  try {
+    const liveArticles = await searchLiveFromBrowser(q, {
+      selectedLangs: state.selectedLangs,
+      includeTopLongest: state.includeTopLongest,
+    });
+    if (Array.isArray(liveArticles) && liveArticles.length > 0) {
+      resolvedArticles = liveArticles;
     }
-  } else if (Date.now() >= backendDownUntil) {
-    try {
-      const res = await fetch(`${state.apiBaseUrl}/search?q=`, {
-        signal: AbortSignal.timeout(3000),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const payload = await res.json();
-      if (Array.isArray(payload.articles) && payload.articles.length > 0) {
-        resolvedArticles = payload.articles;
-      }
-    } catch {
-      backendDownUntil = Date.now() + 25000;
-    }
+  } catch {
+    // Fallback below if offline
   }
 
   if (!resolvedArticles) {
@@ -348,22 +560,31 @@ async function runSearch() {
 
 function renderArticleList() {
   els.articlesContainer.innerHTML = '';
-  els.listHeading.textContent = state.currentQuery
-    ? `Issues found for "${state.currentQuery}" (${state.articles.length})`
-    : 'Articles with cross-lingual issues';
+
+  if (state.activeTab === 'saved') {
+    els.listHeading.textContent = `Saved to fix later (${state.articles.length})`;
+  } else if (state.activeTab === 'search' && state.currentQuery) {
+    els.listHeading.textContent = `Issues found for "${state.currentQuery}" (${state.articles.length})`;
+  } else {
+    els.listHeading.textContent = 'Top Risk Dashboard';
+  }
 
   if (state.articles.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'wb-empty';
-    empty.textContent = 'No articles with cross-lingual discrepancies found for this query.';
+    empty.textContent =
+      state.activeTab === 'saved'
+        ? 'No saved articles yet. Click "Save" on any article to keep track of errors to fix later.'
+        : 'No articles with cross-lingual discrepancies found for this query.';
     els.articlesContainer.appendChild(empty);
     return;
   }
 
   for (const art of state.articles) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'wb-article-item';
+    const cardWrap = document.createElement('div');
+    cardWrap.className = 'wb-article-item';
+    cardWrap.tabIndex = 0;
+    cardWrap.setAttribute('role', 'button');
 
     const top = document.createElement('div');
     top.className = 'wb-article-top';
@@ -372,17 +593,52 @@ function renderArticleList() {
     title.className = 'wb-article-name';
     title.textContent = art.canonicalLabel;
 
-    const count = Number(art.discrepancyCount ?? 0);
+    const pillsGroup = document.createElement('div');
+    pillsGroup.className = 'wb-article-pills';
+
+    const viewsText = formatViewsCount(art.dailyViews);
+    if (viewsText) {
+      const viewsPill = document.createElement('span');
+      viewsPill.className = 'wb-views-pill';
+      viewsPill.textContent = viewsText;
+      viewsPill.title = 'Recent daily Wikipedia pageviews';
+      pillsGroup.appendChild(viewsPill);
+    }
+
+    const totalCount = Number(art.discrepancyCount ?? 0);
+
     const pill = document.createElement('span');
-    pill.className = `wb-mistake-pill${count === 0 ? ' wb-mistake-pill--ok' : ''}`;
+    pill.className = `wb-mistake-pill${totalCount === 0 ? ' wb-mistake-pill--ok' : ''}`;
     pill.textContent =
-      count === 0 ? 'No issues' : `${count} ${count === 1 ? 'issue' : 'issues'}`;
+      totalCount === 0
+        ? 'No issues'
+        : `${totalCount} ${totalCount === 1 ? 'issue' : 'issues'}`;
+    pillsGroup.appendChild(pill);
+
+    const saved = isArticleSaved(art.qid);
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = `wb-save-mini-btn${saved ? ' is-saved' : ''}`;
+    saveBtn.replaceChildren(createBookmarkIconSvg(saved, 13));
+    saveBtn.title = saved ? 'Remove from Saved' : 'Bookmark to Saved';
+    saveBtn.setAttribute('aria-label', saved ? 'Remove from Saved' : 'Bookmark to Saved');
+    saveBtn.setAttribute('aria-pressed', saved ? 'true' : 'false');
+    saveBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleSaveArticle(art);
+      if (state.activeTab === 'saved') {
+        showSavedView();
+      } else {
+        renderArticleList();
+      }
+    });
+    pillsGroup.appendChild(saveBtn);
 
     top.appendChild(title);
-    top.appendChild(pill);
-    btn.appendChild(top);
+    top.appendChild(pillsGroup);
+    cardWrap.appendChild(top);
 
-    const badges = Array.isArray(art.issueBadges) ? art.issueBadges : deriveIssueBadges(art);
+    const badges = deriveIssueBadges(art);
     if (badges.length > 0) {
       const tagsRow = document.createElement('div');
       tagsRow.className = 'wb-issue-tags';
@@ -394,25 +650,37 @@ function renderArticleList() {
         tag.textContent = badgeText;
         tagsRow.appendChild(tag);
       }
-      btn.appendChild(tagsRow);
+      cardWrap.appendChild(tagsRow);
     }
 
-    btn.addEventListener('click', () => openArticleMistakes(art));
-    els.articlesContainer.appendChild(btn);
+    cardWrap.addEventListener('click', () => openArticleMistakes(art));
+    cardWrap.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openArticleMistakes(art);
+      }
+    });
+    els.articlesContainer.appendChild(cardWrap);
   }
 }
 
-async function openArticleMistakes(article) {
+async function openArticleMistakes(article, options = {}) {
   state.selectedArticle = article;
   els.viewList.classList.add('hidden');
   els.viewDetail.classList.remove('hidden');
 
+  const savedEntry = state.savedQueue[article.qid];
   const cached =
-    clientAnalysisCache.get(article.qid) || getCachedBrowserAnalysis(article.qid);
+    clientAnalysisCache.get(article.qid) ||
+    getCachedBrowserAnalysis(article.qid) ||
+    savedEntry?.analysis ||
+    options.fallbackAnalysis ||
+    null;
+
   if (cached) {
     state.selectedAnalysis = cached;
     els.loadingDetail.classList.add('hidden');
-    renderArticleMistakes();
+    renderArticleMistakes(options);
     return;
   }
 
@@ -425,7 +693,7 @@ async function openArticleMistakes(article) {
     clientAnalysisCache.set(article.qid, offline);
     state.selectedAnalysis = offline;
     els.loadingDetail.classList.add('hidden');
-    renderArticleMistakes();
+    renderArticleMistakes(options);
     return;
   }
 
@@ -450,7 +718,7 @@ async function openArticleMistakes(article) {
     };
   } finally {
     els.loadingDetail.classList.add('hidden');
-    renderArticleMistakes();
+    renderArticleMistakes(options);
   }
 }
 
@@ -603,7 +871,7 @@ function renderReferenceStrip(art, discrepancies, cardByLang) {
   return wrapper;
 }
 
-function renderArticleMistakes() {
+function renderArticleMistakes(options = {}) {
   const analysis = state.selectedAnalysis;
   if (!analysis) return;
 
@@ -613,10 +881,32 @@ function renderArticleMistakes() {
 
   const cardByLang = new Map();
 
+  const detailHeader = document.createElement('div');
+  detailHeader.className = 'wb-detail-header';
+
   const heading = document.createElement('h2');
   heading.className = 'wb-detail-title';
   heading.textContent = art.canonicalLabel;
-  els.detailContainer.appendChild(heading);
+
+  const saveDetailBtn = document.createElement('button');
+  saveDetailBtn.type = 'button';
+  const updateSaveBtnUI = () => {
+    const saved = isArticleSaved(art.qid);
+    saveDetailBtn.className = `wb-btn-bookmark${saved ? ' is-saved' : ''}`;
+    saveDetailBtn.replaceChildren(createBookmarkIconSvg(saved));
+    saveDetailBtn.title = saved ? 'Remove from Saved' : 'Bookmark to Saved';
+    saveDetailBtn.setAttribute('aria-label', saved ? 'Remove from Saved' : 'Bookmark to Saved');
+    saveDetailBtn.setAttribute('aria-pressed', saved ? 'true' : 'false');
+  };
+  updateSaveBtnUI();
+  saveDetailBtn.addEventListener('click', () => {
+    toggleSaveArticle(art, analysis);
+    updateSaveBtnUI();
+  });
+
+  detailHeader.appendChild(heading);
+  detailHeader.appendChild(saveDetailBtn);
+  els.detailContainer.appendChild(detailHeader);
 
   els.detailContainer.appendChild(renderReferenceStrip(art, discrepancies, cardByLang));
 
@@ -628,7 +918,7 @@ function renderArticleMistakes() {
     return;
   }
 
-  for (const disc of discrepancies) {
+  discrepancies.forEach((disc, idx) => {
     const issueLabel = resolveIssueLabel(disc);
     const styleKind = classifyBadgeStyle(issueLabel);
     const cardModifier =
@@ -669,7 +959,8 @@ function renderArticleMistakes() {
     toggleBtn.appendChild(claimTitle);
     toggleBtn.appendChild(chevron);
     toggleBtn.addEventListener('click', () => {
-      setIssueCardExpanded(card, !card.classList.contains('is-expanded'));
+      const nextExpanded = !card.classList.contains('is-expanded');
+      setIssueCardExpanded(card, nextExpanded);
     });
     card.appendChild(toggleBtn);
 
@@ -781,7 +1072,11 @@ function renderArticleMistakes() {
     body.appendChild(findBtn);
     card.appendChild(body);
     els.detailContainer.appendChild(card);
-  }
+
+    if (options.expandedIssueIdx === idx) {
+      jumpToIssueCard(card);
+    }
+  });
 }
 
 els.searchForm.addEventListener('submit', (e) => {
@@ -790,9 +1085,29 @@ els.searchForm.addEventListener('submit', (e) => {
   runSearch();
 });
 
+els.tabDashboard.addEventListener('click', () => {
+  els.inputTopicQuery.value = '';
+  state.currentQuery = '';
+  loadDashboard(false);
+});
+
+els.tabSaved.addEventListener('click', () => {
+  showSavedView();
+});
+
+els.btnRefreshDashboard.addEventListener('click', () => {
+  loadDashboard(true);
+});
+
 els.btnBackToList.addEventListener('click', () => {
   els.viewDetail.classList.add('hidden');
   els.viewList.classList.remove('hidden');
+  if (state.activeTab === 'saved') {
+    showSavedView();
+  } else {
+    renderArticleList();
+  }
 });
 
-runSearch();
+updateSavedUiCounts();
+loadDashboard(false);

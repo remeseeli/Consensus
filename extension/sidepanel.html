@@ -51,22 +51,75 @@
             id="input-topic-query"
             type="search"
             class="wb-input"
-            placeholder="Search topic (e.g., Winter War, Stepan Bandera)..."
+            placeholder="Search Wikipedia topic..."
             autocomplete="off"
           />
-          <button id="btn-search" type="submit" class="wb-btn wb-btn-primary">
-            Search
+          <button
+            id="btn-search"
+            type="submit"
+            class="wb-btn wb-btn-search"
+            title="Search"
+            aria-label="Search"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
           </button>
         </form>
+
+        <nav class="wb-nav-tabs" aria-label="Views">
+          <button id="tab-dashboard" type="button" class="wb-nav-tab is-active">
+            Top Risk Dashboard
+          </button>
+          <button id="tab-saved" type="button" class="wb-nav-tab">
+            Saved (<span id="saved-count">0</span>)
+          </button>
+        </nav>
       </header>
 
       <div id="feedback-banner" class="wb-feedback hidden"></div>
 
       <!-- Main Content -->
       <main class="wb-main">
-        <!-- View 1: Articles with Issues -->
+        <!-- View 1: Dashboard / Search Results / Saved -->
         <section id="view-article-list">
-          <div id="list-heading" class="wb-section-label">Articles with detected issues</div>
+          <div class="wb-list-header-row">
+            <div id="list-heading" class="wb-section-label">High-traffic pages with most issues</div>
+            <button
+              id="btn-refresh-dashboard"
+              type="button"
+              class="wb-icon-btn hidden"
+              title="Refresh live pageview risk ranking"
+              aria-label="Refresh live pageview risk ranking"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="14"
+                height="14"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+            </button>
+          </div>
           <div id="loading-list" class="wb-loading hidden">
             Scanning Wikipedia editions in parallel...
           </div>

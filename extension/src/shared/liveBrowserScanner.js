@@ -735,7 +735,7 @@ function scanEditionsForIssues(qid, canonicalLabel, editionsMap) {
         confidenceScore: pov.hasNpovTemplate ? 90 : 77,
         verifiedSources: [],
       });
-      issueBadges.push(`Not neutral (${l.toUpperCase()})`);
+      issueBadges.push('Not neutral');
     }
   }
 
@@ -786,9 +786,7 @@ function scanEditionsForIssues(qid, canonicalLabel, editionsMap) {
       confidenceScore: 90,
       verifiedSources: [],
     });
-    issueBadges.push(
-      `Much fewer references (${lowestEd.lang.toUpperCase()}: ${lowestEd.refCount} vs ${highestEd.lang.toUpperCase()}: ${highestEd.refCount})`
-    );
+    issueBadges.push('Much fewer references');
   }
 
   // 4. MISSING REFERENCE: Explicit [citation needed] tag
@@ -830,9 +828,7 @@ function scanEditionsForIssues(qid, canonicalLabel, editionsMap) {
         confidenceScore: 88,
         verifiedSources: [],
       });
-      if (!issueBadges.some((b) => b.startsWith('Missing reference'))) {
-        issueBadges.push(`Missing reference (${l.toUpperCase()})`);
-      }
+      issueBadges.push('Missing reference');
       break;
     }
   }
@@ -882,13 +878,13 @@ function scanEditionsForIssues(qid, canonicalLabel, editionsMap) {
         confidenceScore: 78,
         verifiedSources: [],
       });
-      issueBadges.push(`Outdated information (${oldest.ed.lang.toUpperCase()})`);
+      issueBadges.push('Outdated information');
     }
   }
 
   return {
     discrepancies,
-    issueBadges,
+    issueBadges: [...new Set(issueBadges)],
     overallSummary:
       discrepancies[0]?.summary ||
       `Detected ${discrepancies.length} issue(s) across editions of ${canonicalLabel}.`,
@@ -1163,4 +1159,227 @@ export async function searchLiveFromBrowser(query, options = {}) {
 
 export function getCachedBrowserAnalysis(qid) {
   return browserAnalysisCache.get(qid) || null;
+}
+
+export function computeSpreadRiskScore(dailyViews, discrepancyCount, maxSeverity) {
+  const views = Math.max(10, Number(dailyViews || 0));
+  const count = Math.max(0, Number(discrepancyCount || 0));
+  if (count === 0) return 0;
+  const sev = Math.max(0, Math.min(100, Number(maxSeverity || 50)));
+  // Ratio-based impact: log-scaled traffic weighted by issue count and severity
+  const trafficScore = Math.log10(views); // ~3 for 1K, ~5 for 100K, ~6 for 1M
+  const issueFactor = count * 1.15 + (sev / 100) * 1.35;
+  return Math.round(trafficScore * issueFactor * 10);
+}
+
+const DASHBOARD_SKIP_TITLE_RE =
+  /^(?:Main_Page|Special:|Wikipedia:|Portal:|File:|Help:|Category:|Template:|Talk:|User:|Module:|MediaWiki:|Deaths_in_|List_of_|Timeline_of_|-)/i;
+
+async function fetchTopViewedWikipediaPages(limit = 15) {
+  for (let daysAgo = 1; daysAgo <= 3; daysAgo++) {
+    const d = new Date(Date.now() - daysAgo * 86400 * 1000);
+    const yyyy = d.getUTCFullYear();
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    const url = `https://wikimedia.org/api/rest_v1/metrics/pageviews/top/en.wikipedia/all-access/${yyyy}/${mm}/${dd}`;
+    try {
+      const data = await fetchJsonFast(url, 4500);
+      const rawArticles = data?.items?.[0]?.articles;
+      if (!Array.isArray(rawArticles) || rawArticles.length === 0) continue;
+
+      const filtered = [];
+      for (const item of rawArticles) {
+        const rawTitle = item?.article || '';
+        if (!rawTitle || DASHBOARD_SKIP_TITLE_RE.test(rawTitle)) continue;
+        if (DISAMBIG_RE.test(rawTitle.replace(/_/g, ' '))) continue;
+        filtered.push({
+          title: rawTitle.replace(/_/g, ' '),
+          dailyViews: Number(item.views || 0),
+        });
+        if (filtered.length >= limit) break;
+      }
+      if (filtered.length > 0) return filtered;
+    } catch {
+      // Try previous day
+    }
+  }
+  return [];
+}
+
+/**
+ * Fetches the most-visited Wikipedia articles from Wikimedia Pageviews,
+ * scans them across selected languages for cross-lingual issues,
+ * and ranks them by (traffic × issues) misinformation spread risk.
+ */
+export async function fetchHighTrafficRiskDashboard(options = {}) {
+  const activeLangs =
+    Array.isArray(options.selectedLangs) && options.selectedLangs.length > 0
+      ? options.selectedLangs
+      : SUPPORTED_LANGS;
+
+  const topViewed = await fetchTopViewedWikipediaPages(14);
+  if (!topViewed.length) return [];
+
+  // Resolve Q-IDs for top viewed EN titles in 1 MediaWiki call
+  const titleParams = new URLSearchParams({
+    action: 'query',
+    titles: topViewed.map((t) => t.title).join('|'),
+    redirects: '1',
+    prop: 'pageprops',
+    ppprop: 'wikibase_item',
+    format: 'json',
+    origin: '*',
+  });
+
+  const titleData = await fetchJsonFast(
+    `https://en.wikipedia.org/w/api.php?${titleParams}`,
+    4800
+  );
+
+  const normMap = new Map();
+  for (const n of titleData?.query?.normalized || []) {
+    normMap.set(n.to.toLowerCase(), n.from.toLowerCase());
+  }
+  for (const r of titleData?.query?.redirects || []) {
+    const orig = normMap.get(r.from.toLowerCase()) || r.from.toLowerCase();
+    normMap.set(r.to.toLowerCase(), orig);
+  }
+
+  const viewsByTitle = new Map();
+  for (const item of topViewed) {
+    viewsByTitle.set(item.title.toLowerCase(), item.dailyViews);
+  }
+
+  const qidViewsMap = new Map();
+  for (const page of Object.values(titleData?.query?.pages || {})) {
+    const qid = page?.pageprops?.wikibase_item;
+    if (!qid || !/^Q\d+$/.test(qid) || !page.title) continue;
+    const pLower = page.title.toLowerCase();
+    const origLower = normMap.get(pLower) || pLower;
+    const views = viewsByTitle.get(origLower) ?? viewsByTitle.get(pLower) ?? 0;
+    if (!qidViewsMap.has(qid) || views > qidViewsMap.get(qid)) {
+      qidViewsMap.set(qid, views);
+    }
+  }
+
+  const qids = [...qidViewsMap.keys()].slice(0, 14);
+  if (!qids.length) return [];
+
+  const wdParams = new URLSearchParams({
+    action: 'wbgetentities',
+    ids: qids.join('|'),
+    props: 'sitelinks|labels',
+    sitefilter: activeLangs.map((l) => `${l}wiki`).join('|'),
+    languages: activeLangs.join('|'),
+    format: 'json',
+    origin: '*',
+  });
+
+  const wdData = await fetchJsonFast(`https://www.wikidata.org/w/api.php?${wdParams}`, 4800);
+  const entities = wdData?.entities || {};
+
+  const candidates = [];
+  for (const qid of qids) {
+    const ent = entities[qid];
+    if (!ent?.sitelinks) continue;
+
+    const titles = {};
+    let count = 0;
+    let isDisambig = false;
+    for (const lang of activeLangs) {
+      const t = ent.sitelinks[`${lang}wiki`]?.title || null;
+      if (t) {
+        titles[lang] = t;
+        count++;
+        if (DISAMBIG_RE.test(t)) isDisambig = true;
+      }
+    }
+    if (count < 2 || isDisambig) continue;
+
+    const label =
+      ent.labels?.en?.value ||
+      titles.en ||
+      activeLangs.map((l) => titles[l]).find(Boolean) ||
+      qid;
+    if (DISAMBIG_RE.test(label)) continue;
+
+    candidates.push({
+      qid,
+      canonicalLabel: label,
+      titles,
+      dailyViews: qidViewsMap.get(qid) || 0,
+    });
+  }
+
+  if (!candidates.length) return [];
+
+  const batchMaps = await Promise.all(
+    activeLangs.map((lang) =>
+      fetchBatchEditions(
+        lang,
+        candidates
+          .filter((c) => c.titles[lang])
+          .map((c) => ({ qid: c.qid, title: c.titles[lang] }))
+      )
+    )
+  );
+
+  const articles = [];
+  for (const cand of candidates) {
+    const edMap = new Map();
+    activeLangs.forEach((lang, idx) => {
+      if (batchMaps[idx].has(cand.qid)) {
+        edMap.set(lang, batchMaps[idx].get(cand.qid));
+      }
+    });
+    if (edMap.size < 2) continue;
+
+    const scan = scanEditionsForIssues(cand.qid, cand.canonicalLabel, edMap);
+    if (scan.discrepancies.length === 0) continue;
+
+    const maxSev = Math.max(...scan.discrepancies.map((d) => d.severityScore));
+    const refs = [...edMap.values()].map((e) => e.refCount);
+    const minRef = Math.min(...refs);
+
+    const editionsSummary = {};
+    for (const [lang, ed] of edMap.entries()) {
+      editionsSummary[lang] = {
+        title: ed.title || null,
+        url: ed.url || null,
+        refCount: ed.refCount ?? 0,
+        lastRevAt: ed.lastRevAt || null,
+      };
+    }
+
+    const spreadRiskScore = computeSpreadRiskScore(
+      cand.dailyViews,
+      scan.discrepancies.length,
+      maxSev
+    );
+
+    const articleSummary = {
+      qid: cand.qid,
+      canonicalLabel: cand.canonicalLabel,
+      editions: editionsSummary,
+      editionCount: edMap.size,
+      sourceCount: minRef,
+      discrepancyCount: scan.discrepancies.length,
+      discrepancySeverity: maxSev,
+      issueBadges: scan.issueBadges,
+      dailyViews: cand.dailyViews,
+      spreadRiskScore,
+      priorityScore: spreadRiskScore,
+    };
+
+    browserAnalysisCache.set(cand.qid, {
+      article: articleSummary,
+      overallSummary: scan.overallSummary,
+      discrepancies: scan.discrepancies,
+    });
+
+    articles.push(articleSummary);
+  }
+
+  articles.sort((a, b) => b.spreadRiskScore - a.spreadRiskScore);
+  return articles;
 }

@@ -69,7 +69,7 @@ export const OFFLINE_ARTICLES = [
     discrepancySeverity: 89,
     issueBadges: [
       'Different information',
-      'Much fewer references (ET: 14 vs EN: 186)',
+      'Much fewer references',
     ],
     mismatchFlags: {
       hardFact: true,
@@ -78,6 +78,7 @@ export const OFFLINE_ARTICLES = [
       neutralityBias: false,
     },
     priorityScore: 86.4,
+    dailyViews: 14500,
   },
   {
     qid: 'Q213293',
@@ -144,9 +145,9 @@ export const OFFLINE_ARTICLES = [
     discrepancyCount: 3,
     discrepancySeverity: 84,
     issueBadges: [
-      'Much fewer references (SV: 4 vs RU: 31)',
+      'Much fewer references',
       'Different information',
-      'Not neutral (RU)',
+      'Not neutral',
     ],
     mismatchFlags: {
       hardFact: true,
@@ -155,6 +156,7 @@ export const OFFLINE_ARTICLES = [
       neutralityBias: true,
     },
     priorityScore: 84.1,
+    dailyViews: 4200,
   },
   {
     qid: 'Q12791',
@@ -222,8 +224,8 @@ export const OFFLINE_ARTICLES = [
     discrepancySeverity: 82,
     issueBadges: [
       'Different information',
-      'Much fewer references (ET: 3 vs FI: 64)',
-      'Outdated information (ET)',
+      'Much fewer references',
+      'Outdated information',
     ],
     mismatchFlags: {
       hardFact: true,
@@ -232,6 +234,7 @@ export const OFFLINE_ARTICLES = [
       neutralityBias: false,
     },
     priorityScore: 81.5,
+    dailyViews: 1900,
   },
 ];
 
