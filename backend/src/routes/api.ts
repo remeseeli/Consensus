@@ -9,7 +9,12 @@ import {
   analyzeArticleByQid,
   searchAndRankArticles,
 } from '../services/orchestratorService.js';
-import type { MismatchType, MultiLangEditionInput, SourceType } from '../types.js';
+import type {
+  DetectedIssueInput,
+  MismatchType,
+  MultiLangEditionInput,
+  SourceType,
+} from '../types.js';
 
 export const apiRouter = Router();
 
@@ -120,10 +125,30 @@ apiRouter.post('/analyze/semantic', async (req: Request, res: Response) => {
       })
     );
 
+    const rawDetected: unknown[] = Array.isArray(body.detectedIssues)
+      ? body.detectedIssues
+      : [];
+    const detectedIssues: DetectedIssueInput[] | undefined = Array.isArray(body.detectedIssues)
+      ? rawDetected
+          .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+          .slice(0, 12)
+          .map((item) => ({
+            targetLang:
+              typeof item.targetLang === 'string' ? item.targetLang.trim().toLowerCase() : '',
+            issueLabel: typeof item.issueLabel === 'string' ? item.issueLabel.trim() : undefined,
+            claimTopic: typeof item.claimTopic === 'string' ? item.claimTopic.trim() : '',
+            summary: typeof item.summary === 'string' ? item.summary.trim() : '',
+            disputedSnippet:
+              typeof item.disputedSnippet === 'string' ? item.disputedSnippet.trim() : undefined,
+          }))
+          .filter((item) => Boolean(item.claimTopic || item.summary))
+      : undefined;
+
     const result = await analyzeEditionsSemantically({
       qid,
       canonicalLabel,
       editions,
+      detectedIssues,
       forceRefresh,
     });
 

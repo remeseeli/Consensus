@@ -166,6 +166,14 @@ export interface MultiLangEditionInput {
   lastRevAt?: string | null;
 }
 
+export interface DetectedIssueInput {
+  targetLang: string;
+  issueLabel?: string;
+  claimTopic: string;
+  summary: string;
+  disputedSnippet?: string;
+}
+
 export interface SemanticDiscrepancyRecord {
   id: number;
   qid: string;

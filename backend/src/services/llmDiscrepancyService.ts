@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { GoogleGenAI, ThinkingLevel, Type, type Schema } from '@google/genai';
 import { config } from '../config.js';
 import type {
+  DetectedIssueInput,
   EditionClaimStatus,
   EditionContentRecord,
   LanguageAgreementMatrix,
@@ -499,6 +500,17 @@ const MULTI_LANG_SEMANTIC_SCHEMA: Schema = {
   required: ['overallSummary', 'discrepancies'],
 };
 
+const SUMMARY_ONLY_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    overallSummary: {
+      type: Type.STRING,
+      description: '1-2 concise English sentences (max 40 words) summarizing only the editions and the provided issue boxes.',
+    },
+  },
+  required: ['overallSummary'],
+};
+
 const semanticCache = new Map<string, { expiresAt: number; data: SemanticAnalysisResponse }>();
 
 const intlLangDisplay =
@@ -601,9 +613,12 @@ export async function analyzeEditionsSemantically(params: {
   qid?: string;
   canonicalLabel: string;
   editions: MultiLangEditionInput[];
+  detectedIssues?: DetectedIssueInput[];
   forceRefresh?: boolean;
 }): Promise<SemanticAnalysisResponse> {
   const qid = (params.qid || '').trim().toUpperCase() || 'CUSTOM';
+  const isSummaryOnly = Array.isArray(params.detectedIssues);
+  const detectedIssues = isSummaryOnly ? params.detectedIssues! : [];
   const validEditions = params.editions
     .map((e) => ({
       ...e,
@@ -639,21 +654,24 @@ export async function analyzeEditionsSemantically(params: {
     };
   }
 
-  // Keep prompt compact (max 5 editions, 1000-1200 chars/edition) for low-latency responses
+  // Keep prompt compact (max 5 editions, 900-1200 chars/edition) for low-latency responses
   const editionsWithContext = selectEditionsForSemanticPrompt(validEditions, 5);
   const perEditionCharBudget = editionsWithContext.length <= 3 ? 1200 : 900;
 
+  const issuesFingerprint = isSummaryOnly
+    ? `|issues=${detectedIssues.map((i) => `${i.targetLang}:${i.issueLabel || ''}:${i.claimTopic}`).join(';')}`
+    : '';
   const cacheFingerprint = crypto
     .createHash('sha256')
     .update(
       editionsWithContext
         .map((e) => `${e.lang}:${e.title}:${e.extract.slice(0, perEditionCharBudget)}:${e.refCount ?? ''}`)
         .sort()
-        .join('|')
+        .join('|') + issuesFingerprint
     )
     .digest('hex')
     .slice(0, 16);
-  const cacheKey = `${qid}:${config.geminiModel}:${cacheFingerprint}`;
+  const cacheKey = `${qid}:${config.geminiModel}:${isSummaryOnly ? 'sum' : 'full'}:${cacheFingerprint}`;
 
   if (!params.forceRefresh) {
     const cached = semanticCache.get(cacheKey);
@@ -677,7 +695,29 @@ export async function analyzeEditionsSemantically(params: {
     .join('\n\n');
 
   const langCodesList = editionsWithContext.map((e) => e.lang).join(', ');
-  const prompt = `Cross-lingual Wikipedia fact-checker for "${params.canonicalLabel}" (${qid}).
+  const formattedIssues =
+    detectedIssues.length > 0
+      ? detectedIssues
+          .map(
+            (d, idx) =>
+              `${idx + 1}. [${d.targetLang.toUpperCase()} | ${d.issueLabel || 'Issue'}] ${d.claimTopic}: ${d.summary}`
+          )
+          .join('\n')
+      : '(No issue boxes flagged)';
+
+  const prompt = isSummaryOnly
+    ? `Cross-lingual Wikipedia summary assistant for "${params.canonicalLabel}" (${qid}) across ${editionsWithContext.length} editions (${langCodesList}).
+
+Issue boxes currently shown to the user:
+${formattedIssues}
+
+Strict rules:
+- Write 1-2 concise English sentences (max 40 words total) explaining what these editions cover and summarizing ONLY the discrepancies present in the issue boxes above.
+- Do NOT mention, invent, or speculate about any discrepancies, figures, or flaws that are NOT in the listed issue boxes.
+- If no issue boxes are flagged, simply summarize in 1-2 sentences that the checked editions broadly align on the inspected signals without raising extra issues.
+
+${formattedEditions}`
+    : `Cross-lingual Wikipedia fact-checker for "${params.canonicalLabel}" (${qid}).
 Compare these ${editionsWithContext.length} editions (${langCodesList}) semantically and return at most 3 highest-impact genuine discrepancies (or [] if aligned).
 
 Categories:
@@ -702,9 +742,9 @@ ${formattedEditions}`;
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
-        responseSchema: MULTI_LANG_SEMANTIC_SCHEMA,
+        responseSchema: isSummaryOnly ? SUMMARY_ONLY_SCHEMA : MULTI_LANG_SEMANTIC_SCHEMA,
         temperature: 0.1,
-        maxOutputTokens: 1500,
+        maxOutputTokens: isSummaryOnly ? 350 : 1500,
         ...(thinkingConfig ? { thinkingConfig } : {}),
       },
     });
@@ -745,7 +785,11 @@ ${formattedEditions}`;
     }
 
     const parsed = JSON.parse(rawText) as LlmSemanticPayload;
-    const rawList = Array.isArray(parsed.discrepancies) ? parsed.discrepancies : [];
+    const rawList = isSummaryOnly
+      ? []
+      : Array.isArray(parsed.discrepancies)
+        ? parsed.discrepancies
+        : [];
 
     const discrepancies: SemanticDiscrepancyRecord[] = [];
     for (const d of rawList) {
@@ -827,14 +871,18 @@ ${formattedEditions}`;
       )
     );
 
+    const fallbackSummary = isSummaryOnly
+      ? detectedIssues.length > 0
+        ? `Summary of ${detectedIssues.length} detected issue(s) across ${editionsWithContext.length} editions.`
+        : `Checked ${editionsWithContext.length} editions with no flagged discrepancies.`
+      : discrepancies.length > 0
+        ? `Gemini detected ${discrepancies.length} semantic issue(s) across ${editionsWithContext.length} editions.`
+        : `No major semantic discrepancies detected across ${editionsWithContext.length} editions.`;
+
     const result: SemanticAnalysisResponse = {
       qid,
       canonicalLabel: params.canonicalLabel,
-      overallSummary:
-        (parsed.overallSummary || '').trim() ||
-        (discrepancies.length > 0
-          ? `Gemini detected ${discrepancies.length} semantic issue(s) across ${editionsWithContext.length} editions.`
-          : `No major semantic discrepancies detected across ${editionsWithContext.length} editions.`),
+      overallSummary: (parsed.overallSummary || '').trim() || fallbackSummary,
       issueBadges,
       discrepancies,
       analyzedWithLlm: true,
