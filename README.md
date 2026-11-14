@@ -1,6 +1,6 @@
-# WikiBridge — Cross-Lingual Wikipedia Fact-Checking & Citation Workbench (`FI` · `SV` · `RU`)
+# Consensus — Cross-Lingual Wikipedia Fact-Checking & Citation Workbench (`FI` · `SV` · `RU`)
 
-**WikiBridge** is a Manifest V3 browser extension and Node.js/TypeScript + **MariaDB** backend designed for Wikipedia editors auditing factual consistency, citation gaps, and outdated statistics across **Finnish (`fi.wikipedia.org`)**, **Swedish (`sv.wikipedia.org`)**, and **Russian (`ru.wikipedia.org`)** Wikipedia.
+**Consensus** is a Manifest V3 browser extension and Node.js/TypeScript + **MariaDB** backend designed for Wikipedia editors auditing factual consistency, citation gaps, and outdated statistics across **Finnish (`fi.wikipedia.org`)**, **Swedish (`sv.wikipedia.org`)**, and **Russian (`ru.wikipedia.org`)** Wikipedia.
 
 ---
 
@@ -79,7 +79,7 @@ No frontend build step is required — `extension/` uses native ES modules ready
 1. Open Chrome, Edge, or Brave and navigate to `chrome://extensions`.
 2. Enable **Developer mode** (top-right toggle).
 3. Click **Load unpacked** and select the `extension/` folder in this repository.
-4. Click the **WikiBridge** extension icon in the browser toolbar to open the persistent **Side Panel** (or click the **WikiBridge FI·SV·RU** button at the bottom-right of any `fi`, `sv`, or `ru` Wikipedia article to toggle the layout-preserving docked sidebar).
+4. Click the **Consensus** extension icon in the browser toolbar to open the persistent **Side Panel** (or click the **Consensus FI·SV·RU** button at the bottom-right of any `fi`, `sv`, or `ru` Wikipedia article to toggle the layout-preserving docked sidebar).
 
 ---
 
