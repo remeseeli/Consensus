@@ -263,6 +263,12 @@ body {
   color: #363b3f;
 }
 
+.wb-issue-tag--pov {
+  background-color: #f5effa;
+  border-color: #7b3fa0;
+  color: #5b257d;
+}
+
 /* Compact Reference Comparison Line on Card */
 .wb-article-refs {
   margin-top: 7px;
@@ -341,6 +347,10 @@ body {
   border-left-color: #ac6600;
 }
 
+.wb-mistake-card--pov {
+  border-left-color: #7b3fa0;
+}
+
 .wb-mistake-header {
   display: flex;
   flex-wrap: wrap;
@@ -365,6 +375,12 @@ body {
   background-color: #fef6e7;
   border-color: #ac6600;
   color: #7a4800;
+}
+
+.wb-issue-type-badge--pov {
+  background-color: #f5effa;
+  border-color: #7b3fa0;
+  color: #5b257d;
 }
 
 .wb-issue-target-lang {

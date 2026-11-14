@@ -1,15 +1,13 @@
-import { DEFAULT_API_BASE_URL } from '../shared/constants.js';
+import {
+  DEFAULT_API_BASE_URL,
+  LANG_NAMES,
+  SUPPORTED_LANGS,
+} from '../shared/constants.js';
 import { OFFLINE_ANALYSES, OFFLINE_ARTICLES } from '../shared/demoFallback.js';
 import {
   getCachedBrowserAnalysis,
   searchLiveFromBrowser,
 } from '../shared/liveBrowserScanner.js';
-
-const LANG_NAMES = {
-  fi: 'Finnish',
-  sv: 'Swedish',
-  ru: 'Russian',
-};
 
 // Instant client-side caches so repeat queries and clicking articles take 0ms
 const clientSearchCache = new Map();
@@ -80,8 +78,11 @@ function deriveIssueBadges(art) {
   if (art.mismatchFlags?.hardFact) {
     badges.push('Different information');
   }
+  if (art.mismatchFlags?.neutralityBias) {
+    badges.push('Not neutral (emotional tone)');
+  }
 
-  const available = ['fi', 'sv', 'ru']
+  const available = SUPPORTED_LANGS
     .filter((l) => Boolean(art.editions?.[l]?.title))
     .map((l) => ({ code: l.toUpperCase(), refs: Number(art.editions?.[l]?.refCount ?? 0) }));
 
@@ -107,6 +108,9 @@ function deriveIssueBadges(art) {
 
 function classifyBadgeStyle(label) {
   const lower = (label || '').toLowerCase();
+  if (lower.includes('neutral') || lower.includes('emotional') || lower.includes('pov')) {
+    return 'pov';
+  }
   if (lower.includes('fewer reference') || lower.includes('missing reference') || lower.includes('citation')) {
     return 'refs';
   }
@@ -118,6 +122,7 @@ function classifyBadgeStyle(label) {
 
 function resolveIssueLabel(disc) {
   if (disc.issueLabel) return disc.issueLabel;
+  if (disc.mismatchType === 'neutrality_bias') return 'Not neutral (emotional tone)';
   if (disc.mismatchType === 'outdated_data') return 'Outdated information';
   if (disc.mismatchType === 'missing_citation') {
     const text = `${disc.claimTopic || ''} ${disc.summary || ''}`.toLowerCase();
@@ -136,7 +141,6 @@ async function runSearch() {
   els.viewDetail.classList.add('hidden');
   els.viewList.classList.remove('hidden');
 
-  // Instant 0ms return if already searched in this session
   if (clientSearchCache.has(cacheKey)) {
     state.articles = clientSearchCache.get(cacheKey);
     els.loadingList.classList.add('hidden');
@@ -145,23 +149,23 @@ async function runSearch() {
     return;
   }
 
-  // Instant 0ms initial load if query is empty and backend is not running
   if (!q && Date.now() < backendDownUntil) {
     state.articles = OFFLINE_ARTICLES;
     els.loadingList.classList.add('hidden');
-    els.searchTiming.textContent = '';
+    els.searchTiming.textContent = 'FI · SV · RU · EN · ET · ES';
     renderArticleList();
     return;
   }
 
   els.loadingList.classList.remove('hidden');
   els.articlesContainer.innerHTML = '';
-  els.searchTiming.textContent = 'Searching...';
+  els.searchTiming.textContent = 'Searching 6 languages...';
 
   const startedAt = performance.now();
   let resolvedArticles = null;
 
-  // 1. Try fast Express + MariaDB backend if reachable
+  // Prefer fast direct 6-language browser scanner when querying live Wikipedia
+  // (or use Express+MariaDB backend when running and returning 6-lang data)
   if (Date.now() >= backendDownUntil) {
     try {
       const res = await fetch(`${state.apiBaseUrl}/search?q=${encodeURIComponent(q)}`, {
@@ -177,7 +181,6 @@ async function runSearch() {
     }
   }
 
-  // 2. If backend isn't running, run fast (< 1s) direct parallel MediaWiki + Wikidata scan
   if (!resolvedArticles) {
     if (q) {
       try {
@@ -200,7 +203,7 @@ async function runSearch() {
   clientSearchCache.set(cacheKey, resolvedArticles);
 
   const elapsedSec = ((performance.now() - startedAt) / 1000).toFixed(2);
-  els.searchTiming.textContent = q ? `${elapsedSec}s` : '';
+  els.searchTiming.textContent = q ? `${elapsedSec}s` : 'FI · SV · RU · EN · ET · ES';
   els.loadingList.classList.add('hidden');
   renderArticleList();
 }
@@ -224,7 +227,6 @@ function renderArticleList() {
     btn.type = 'button';
     btn.className = 'wb-article-item';
 
-    // Top row: Title + issue count pill
     const top = document.createElement('div');
     top.className = 'wb-article-top';
 
@@ -241,7 +243,6 @@ function renderArticleList() {
     top.appendChild(pill);
     btn.appendChild(top);
 
-    // Middle row: Clear issue reason badges ("Different information", "Much fewer references", etc.)
     const badges = deriveIssueBadges(art);
     const tagsRow = document.createElement('div');
     tagsRow.className = 'wb-issue-tags';
@@ -255,8 +256,7 @@ function renderArticleList() {
     }
     btn.appendChild(tagsRow);
 
-    // Bottom row: Reference counts per language (highlighting low-reference editions)
-    const availableLangs = ['fi', 'sv', 'ru'].filter((l) => Boolean(art.editions?.[l]?.title));
+    const availableLangs = SUPPORTED_LANGS.filter((l) => Boolean(art.editions?.[l]?.title));
     const maxRefs = Math.max(
       0,
       ...availableLangs.map((l) => Number(art.editions?.[l]?.refCount ?? 0))
@@ -264,7 +264,7 @@ function renderArticleList() {
 
     const refsLine = document.createElement('div');
     refsLine.className = 'wb-article-refs';
-    refsLine.appendChild(document.createTextNode('References: '));
+    refsLine.appendChild(document.createTextNode('Refs: '));
 
     availableLangs.forEach((lang, idx) => {
       if (idx > 0) {
@@ -295,7 +295,6 @@ async function openArticleMistakes(article) {
   els.viewList.classList.add('hidden');
   els.viewDetail.classList.remove('hidden');
 
-  // 1. Check instant client-side or browser-scanner cache (0ms!)
   const cached =
     clientAnalysisCache.get(article.qid) || getCachedBrowserAnalysis(article.qid);
   if (cached) {
@@ -305,7 +304,6 @@ async function openArticleMistakes(article) {
     return;
   }
 
-  // 2. Check offline demo dataset instantly if backend is down
   if (Date.now() < backendDownUntil && OFFLINE_ANALYSES[article.qid]) {
     const offline = {
       article,
@@ -371,21 +369,22 @@ function renderReferenceStrip(art) {
   const strip = document.createElement('div');
   strip.className = 'wb-ref-strip';
 
-  const langs = ['fi', 'sv', 'ru'];
-  const presentCounts = langs
+  const presentCounts = SUPPORTED_LANGS
     .filter((l) => Boolean(art.editions?.[l]?.title))
     .map((l) => Number(art.editions?.[l]?.refCount ?? 0));
   const maxRefs = Math.max(0, ...presentCounts);
 
-  for (const lang of langs) {
+  for (const lang of SUPPORTED_LANGS) {
     const ed = art.editions?.[lang];
     const hasEd = Boolean(ed?.title);
+    if (!hasEd) continue;
+
     const refs = Number(ed?.refCount ?? 0);
     const isLow =
-      hasEd && maxRefs >= 6 && (maxRefs >= refs * 2.5 || maxRefs - refs >= 12);
+      maxRefs >= 6 && (maxRefs >= refs * 2.5 || maxRefs - refs >= 12);
 
     const box = document.createElement('div');
-    box.className = `wb-ref-box${isLow ? ' wb-ref-box--low' : ''}${!hasEd ? ' wb-ref-box--missing' : ''}`;
+    box.className = `wb-ref-box${isLow ? ' wb-ref-box--low' : ''}`;
 
     const langSpan = document.createElement('span');
     langSpan.className = 'wb-ref-box-lang';
@@ -393,13 +392,7 @@ function renderReferenceStrip(art) {
 
     const valSpan = document.createElement('span');
     valSpan.className = 'wb-ref-box-val';
-    if (!hasEd) {
-      valSpan.textContent = 'No article';
-    } else if (isLow) {
-      valSpan.textContent = `${refs} refs (Low)`;
-    } else {
-      valSpan.textContent = `${refs} refs`;
-    }
+    valSpan.textContent = isLow ? `${refs} refs (Low)` : `${refs} refs`;
 
     box.appendChild(langSpan);
     box.appendChild(valSpan);
@@ -422,30 +415,40 @@ function renderArticleMistakes() {
   heading.textContent = art.canonicalLabel;
   els.detailContainer.appendChild(heading);
 
-  // Reference comparison strip right under the title
   els.detailContainer.appendChild(renderReferenceStrip(art));
 
   if (discrepancies.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'wb-empty';
-    empty.textContent = 'No specific issues detected across FI, SV, and RU for this article.';
+    empty.textContent = 'No specific issues detected across editions for this article.';
     els.detailContainer.appendChild(empty);
     return;
   }
 
   for (const disc of discrepancies) {
     const issueLabel = resolveIssueLabel(disc);
-    const isRefIssue = classifyBadgeStyle(issueLabel) === 'refs';
+    const styleKind = classifyBadgeStyle(issueLabel);
+    const cardModifier =
+      styleKind === 'refs'
+        ? ' wb-mistake-card--refs'
+        : styleKind === 'pov'
+          ? ' wb-mistake-card--pov'
+          : '';
+    const badgeModifier =
+      styleKind === 'refs'
+        ? ' wb-issue-type-badge--refs'
+        : styleKind === 'pov'
+          ? ' wb-issue-type-badge--pov'
+          : '';
 
     const card = document.createElement('div');
-    card.className = `wb-mistake-card${isRefIssue ? ' wb-mistake-card--refs' : ''}`;
+    card.className = `wb-mistake-card${cardModifier}`;
 
-    // Header row: Clear Issue Type Pill + Target Language
     const header = document.createElement('div');
     header.className = 'wb-mistake-header';
 
     const typeBadge = document.createElement('span');
-    typeBadge.className = `wb-issue-type-badge${isRefIssue ? ' wb-issue-type-badge--refs' : ''}`;
+    typeBadge.className = `wb-issue-type-badge${badgeModifier}`;
     typeBadge.textContent = issueLabel;
 
     const langFull = LANG_NAMES[disc.targetLang] || disc.targetLang.toUpperCase();
@@ -457,7 +460,6 @@ function renderArticleMistakes() {
     header.appendChild(langTarget);
     card.appendChild(header);
 
-    // Issue headline & concise explanation
     const claimTitle = document.createElement('h3');
     claimTitle.className = 'wb-mistake-heading';
     claimTitle.textContent = disc.claimTopic;
@@ -468,15 +470,14 @@ function renderArticleMistakes() {
     desc.textContent = disc.summary;
     card.appendChild(desc);
 
-    // Side-by-side FI / SV / RU comparison rows
     const claimsObj = disc.agreementMatrix?.claims;
     if (claimsObj) {
       const compareBox = document.createElement('div');
       compareBox.className = 'wb-claims-compare';
 
-      for (const lang of ['fi', 'sv', 'ru']) {
+      for (const lang of SUPPORTED_LANGS) {
         const val = claimsObj[lang]?.value;
-        if (!val || val === 'Edition missing') continue;
+        if (!val || val === 'Edition missing' || val === 'Article missing') continue;
 
         const isFlagged = lang === disc.targetLang;
         const row = document.createElement('div');
@@ -499,11 +500,10 @@ function renderArticleMistakes() {
     if (disc.disputedSnippet) {
       const quote = document.createElement('div');
       quote.className = 'wb-snippet-preview';
-      quote.textContent = `Passage on page: "${disc.disputedSnippet}"`;
+      quote.textContent = `Highlighted on page: "${disc.highlightPhrase || disc.disputedSnippet}"`;
       card.appendChild(quote);
     }
 
-    // Primary Action Button: Jump to & highlight inside Wikipedia
     const targetUrl = art.editions?.[disc.targetLang]?.url || '';
     const findBtn = document.createElement('button');
     findBtn.type = 'button';

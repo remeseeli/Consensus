@@ -1,7 +1,8 @@
 /**
  * WikiBridge Minimal Wikipedia Content Script
- * Locates the disputed passage inside the Wikipedia DOM, scrolls smoothly to it,
- * highlights the exact words in red (#fee7e6 / #d33), and displays a concise note.
+ * Locates the exact differing, unsourced, or emotional passage inside the Wikipedia DOM,
+ * scrolls smoothly to it, highlights the exact differing part in red (#fee7e6 / #d33),
+ * and displays a concise inline note.
  */
 
 (() => {
@@ -28,10 +29,13 @@
     });
   }
 
-  function normalizeWhitespace(str) {
+  function normalizeText(str) {
     return (str || '')
+      .replace(/\u00ad/g, '')
+      .replace(/[\u2012-\u2015\u2212]/g, '-')
       .replace(/[\u00a0\s]+/g, ' ')
       .replace(/\[\d+\]/g, '')
+      .replace(/\.{3}$/, '')
       .trim();
   }
 
@@ -57,6 +61,8 @@
     while ((current = walker.nextNode())) {
       if (!range.intersectsNode(current)) continue;
       if (!current.textContent || !current.textContent.trim()) continue;
+      const parentTag = current.parentElement ? current.parentElement.tagName : '';
+      if (parentTag === 'SUP' || parentTag === 'STYLE' || parentTag === 'SCRIPT') continue;
 
       const start = current === range.startContainer ? range.startOffset : 0;
       const end =
@@ -80,7 +86,7 @@
   }
 
   function highlightSubstringInElement(containerEl, rawSnippet) {
-    const cleanTarget = rawSnippet.replace(/[\u00a0\s]+/g, ' ').trim().toLowerCase();
+    const cleanTarget = normalizeText(rawSnippet).toLowerCase();
     if (!cleanTarget || cleanTarget.length < 3) return null;
 
     const walker = document.createTreeWalker(containerEl, NodeFilter.SHOW_TEXT, {
@@ -101,7 +107,9 @@
     while ((textNode = walker.nextNode())) {
       const val = textNode.textContent || '';
       for (let i = 0; i < val.length; i++) {
-        const ch = val[i];
+        let ch = val[i];
+        if (ch === '\u00ad') continue;
+        if (/[\u2012-\u2015\u2212]/.test(ch)) ch = '-';
         const isSpace = /\s|\u00a0/.test(ch);
         if (isSpace) {
           if (!prevWasSpace && normalizedConcat.length > 0) {
@@ -141,41 +149,56 @@
       (el) => (el.textContent || '').trim().length >= 18
     );
 
-    const snippet = (discrepancy.disputedSnippet || '').trim();
+    const snippet = normalizeText(discrepancy.disputedSnippet || '');
+    const phrase = normalizeText(discrepancy.highlightPhrase || '');
 
     if (snippet) {
-      const normSnippet = normalizeWhitespace(snippet).toLowerCase();
+      const normSnippet = snippet.toLowerCase();
 
-      // 1. Full normalized substring match
+      // 1. Full normalized sentence match
       for (const block of blocks) {
-        const normBlock = normalizeWhitespace(block.textContent || '').toLowerCase();
+        const normBlock = normalizeText(block.textContent || '').toLowerCase();
         if (normBlock.includes(normSnippet)) {
           return { block, subPhrase: normSnippet };
         }
       }
 
-      // 2. Sliding 4-word phrase match
+      // 2. Clause match (split at commas/semicolons/dashes)
+      const clauses = normSnippet
+        .split(/[,;—]/)
+        .map((c) => c.trim())
+        .filter((c) => c.length >= 16);
+      for (const clause of clauses) {
+        for (const block of blocks) {
+          const normBlock = normalizeText(block.textContent || '').toLowerCase();
+          if (normBlock.includes(clause)) {
+            return { block, subPhrase: clause };
+          }
+        }
+      }
+
+      // 3. Sliding 4-word phrase match
       const words = normSnippet.split(' ').filter(Boolean);
       if (words.length >= 3) {
         const winLen = Math.min(4, words.length);
         for (let i = 0; i <= words.length - winLen; i++) {
-          const phrase = words.slice(i, i + winLen).join(' ');
+          const win = words.slice(i, i + winLen).join(' ');
           for (const block of blocks) {
-            const normBlock = normalizeWhitespace(block.textContent || '').toLowerCase();
-            if (normBlock.includes(phrase)) {
-              return { block, subPhrase: phrase };
+            const normBlock = normalizeText(block.textContent || '').toLowerCase();
+            if (normBlock.includes(win)) {
+              return { block, subPhrase: win };
             }
           }
         }
       }
 
-      // 3. Token + numeric overlap match
+      // 4. Token + numeric overlap match
       const targetTokens = words.filter((w) => w.length >= 3);
       let bestBlock = null;
       let bestScore = 0;
 
       for (const block of blocks) {
-        const textLower = normalizeWhitespace(block.textContent || '').toLowerCase();
+        const textLower = normalizeText(block.textContent || '').toLowerCase();
         let hits = 0;
         for (const tok of targetTokens) {
           if (textLower.includes(tok)) {
@@ -194,7 +217,18 @@
       }
     }
 
-    // 4. Section heading fallback
+    // 5. Direct highlightPhrase match anywhere in content
+    if (phrase && phrase.length >= 3) {
+      const phraseLower = phrase.toLowerCase();
+      for (const block of blocks) {
+        const normBlock = normalizeText(block.textContent || '').toLowerCase();
+        if (normBlock.includes(phraseLower)) {
+          return { block, subPhrase: phraseLower };
+        }
+      }
+    }
+
+    // 6. Section heading fallback
     if (discrepancy.sectionHeading) {
       const targetSec = discrepancy.sectionHeading.toLowerCase();
       const headings = Array.from(contentRoot.querySelectorAll('h2, h3, .mw-heading'));
@@ -255,8 +289,13 @@
     const block = match.block;
     if (!block) return { highlighted: false };
 
+    // Prefer highlighting the exact differing phrase/word when available,
+    // falling back to the matched sentence/clause or full paragraph focus.
     let markEl = null;
-    if (match.subPhrase || discrepancy.disputedSnippet) {
+    if (discrepancy.highlightPhrase) {
+      markEl = highlightSubstringInElement(block, discrepancy.highlightPhrase);
+    }
+    if (!markEl && (match.subPhrase || discrepancy.disputedSnippet)) {
       markEl = highlightSubstringInElement(
         block,
         match.subPhrase || discrepancy.disputedSnippet
