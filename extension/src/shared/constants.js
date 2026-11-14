@@ -1,6 +1,6 @@
 export const DEFAULT_API_BASE_URL = 'http://localhost:4000/api';
 
-export const SUPPORTED_LANGS = ['fi', 'sv', 'ru', 'en', 'et', 'es', 'zh', 'pl'];
+export const SUPPORTED_LANGS = ['fi', 'sv', 'ru', 'en', 'et', 'es', 'zh', 'pl', 'hu'];
 
 export const LANG_NAMES = {
   fi: 'Finnish',
@@ -11,6 +11,7 @@ export const LANG_NAMES = {
   es: 'Spanish',
   zh: 'Chinese',
   pl: 'Polish',
+  hu: 'Hungarian',
 };
 
 export const LANG_LABELS = {
@@ -22,6 +23,7 @@ export const LANG_LABELS = {
   es: 'Spanish (ES)',
   zh: 'Chinese (ZH)',
   pl: 'Polish (PL)',
+  hu: 'Hungarian (HU)',
 };
 
 export const TEMPLATE_TYPE_HINTS = {
@@ -33,6 +35,7 @@ export const TEMPLATE_TYPE_HINTS = {
   es: '{{Cita web}} / {{Cita libro}} / {{Cita publicación}}',
   zh: '{{Cite journal}} / {{Cite book}} / {{Cite web}}',
   pl: '{{Cytuj stronę}} / {{Cytuj książkę}} / {{Cytuj pismo}}',
+  hu: '{{CitWeb}} / {{CitLib}} / {{CitPer}}',
 };
 
 export const MISMATCH_LABELS = {

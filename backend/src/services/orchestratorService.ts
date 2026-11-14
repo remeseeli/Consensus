@@ -342,7 +342,23 @@ export async function searchAndRankArticles(options: {
     })();
   }
 
-  rankedResults.sort((a, b) => b.priorityScore - a.priorityScore);
+  rankedResults.sort((a, b) => {
+    const qLower = cleanedQuery.toLowerCase();
+    const isExact = (art: RankedArticleSummary) =>
+      art.canonicalLabel.toLowerCase().trim() === qLower ||
+      [art.editions.fi.title, art.editions.sv.title, art.editions.ru.title].some(
+        (t) => t && t.toLowerCase().trim() === qLower
+      );
+    const aExact = isExact(a) ? 1 : 0;
+    const bExact = isExact(b) ? 1 : 0;
+    if (aExact !== bExact) return bExact - aExact;
+
+    const aContains = a.canonicalLabel.toLowerCase().includes(qLower) ? 1 : 0;
+    const bContains = b.canonicalLabel.toLowerCase().includes(qLower) ? 1 : 0;
+    if (aContains !== bContains) return bContains - aContains;
+
+    return b.priorityScore - a.priorityScore;
+  });
 
   memorySearchCache.set(normalizedQuery, {
     expiresAt: Date.now() + config.searchCacheTtlSeconds * 1000,

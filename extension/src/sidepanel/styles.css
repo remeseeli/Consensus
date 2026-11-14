@@ -226,6 +226,12 @@ body {
   font-weight: 700;
 }
 
+.wb-mistake-pill--ok {
+  background-color: #eaf3ee;
+  border-color: #14866d;
+  color: #14866d;
+}
+
 /* Explicit Issue Badges on Search Results */
 .wb-issue-tags {
   display: flex;

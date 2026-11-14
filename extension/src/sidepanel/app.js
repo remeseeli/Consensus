@@ -152,28 +152,37 @@ async function runSearch() {
   if (!q && Date.now() < backendDownUntil) {
     state.articles = OFFLINE_ARTICLES;
     els.loadingList.classList.add('hidden');
-    els.searchTiming.textContent = 'FI · SV · RU · EN · ET · ES · ZH · PL';
+    els.searchTiming.textContent = 'FI · SV · RU · EN · ET · ES · ZH · PL · HU';
     renderArticleList();
     return;
   }
 
   els.loadingList.classList.remove('hidden');
   els.articlesContainer.innerHTML = '';
-  els.searchTiming.textContent = 'Searching 8 languages...';
+  els.searchTiming.textContent = 'Searching 9 languages...';
 
   const startedAt = performance.now();
   let resolvedArticles = null;
 
-  // Prefer fast direct 6-language browser scanner when querying live Wikipedia
-  // (or use Express+MariaDB backend when running and returning 6-lang data)
-  if (Date.now() >= backendDownUntil) {
+  // For topic searches, run the fast 9-language live scanner (with exact-match #1 ranking,
+  // relevance filtering, and emotional/NPOV detection). For empty query, check backend/offline list.
+  if (q) {
     try {
-      const res = await fetch(`${state.apiBaseUrl}/search?q=${encodeURIComponent(q)}`, {
-        signal: AbortSignal.timeout(5500),
+      const liveArticles = await searchLiveFromBrowser(q);
+      if (Array.isArray(liveArticles) && liveArticles.length > 0) {
+        resolvedArticles = liveArticles;
+      }
+    } catch {
+      // Fallback below if offline
+    }
+  } else if (Date.now() >= backendDownUntil) {
+    try {
+      const res = await fetch(`${state.apiBaseUrl}/search?q=`, {
+        signal: AbortSignal.timeout(3000),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const payload = await res.json();
-      if (Array.isArray(payload.articles) && (q || payload.articles.length > 0)) {
+      if (Array.isArray(payload.articles) && payload.articles.length > 0) {
         resolvedArticles = payload.articles;
       }
     } catch {
@@ -182,19 +191,7 @@ async function runSearch() {
   }
 
   if (!resolvedArticles) {
-    if (q) {
-      try {
-        const liveArticles = await searchLiveFromBrowser(q);
-        if (Array.isArray(liveArticles) && liveArticles.length > 0) {
-          resolvedArticles = liveArticles;
-        }
-      } catch {
-        // Fallback below if completely offline
-      }
-    }
-    if (!resolvedArticles) {
-      resolvedArticles = getOfflineArticles(q);
-    }
+    resolvedArticles = getOfflineArticles(q);
   }
 
   if (token !== activeSearchToken) return;
@@ -203,7 +200,7 @@ async function runSearch() {
   clientSearchCache.set(cacheKey, resolvedArticles);
 
   const elapsedSec = ((performance.now() - startedAt) / 1000).toFixed(2);
-  els.searchTiming.textContent = q ? `${elapsedSec}s` : 'FI · SV · RU · EN · ET · ES · ZH · PL';
+  els.searchTiming.textContent = q ? `${elapsedSec}s` : 'FI · SV · RU · EN · ET · ES · ZH · PL · HU';
   els.loadingList.classList.add('hidden');
   renderArticleList();
 }
@@ -234,27 +231,30 @@ function renderArticleList() {
     title.className = 'wb-article-name';
     title.textContent = art.canonicalLabel;
 
-    const count = Math.max(1, Number(art.discrepancyCount || 1));
+    const count = Number(art.discrepancyCount ?? 0);
     const pill = document.createElement('span');
-    pill.className = 'wb-mistake-pill';
-    pill.textContent = `${count} ${count === 1 ? 'issue' : 'issues'}`;
+    pill.className = `wb-mistake-pill${count === 0 ? ' wb-mistake-pill--ok' : ''}`;
+    pill.textContent =
+      count === 0 ? 'No issues' : `${count} ${count === 1 ? 'issue' : 'issues'}`;
 
     top.appendChild(title);
     top.appendChild(pill);
     btn.appendChild(top);
 
-    const badges = deriveIssueBadges(art);
-    const tagsRow = document.createElement('div');
-    tagsRow.className = 'wb-issue-tags';
+    const badges = Array.isArray(art.issueBadges) ? art.issueBadges : deriveIssueBadges(art);
+    if (badges.length > 0) {
+      const tagsRow = document.createElement('div');
+      tagsRow.className = 'wb-issue-tags';
 
-    for (const badgeText of badges) {
-      const kind = classifyBadgeStyle(badgeText);
-      const tag = document.createElement('span');
-      tag.className = `wb-issue-tag wb-issue-tag--${kind}`;
-      tag.textContent = badgeText;
-      tagsRow.appendChild(tag);
+      for (const badgeText of badges) {
+        const kind = classifyBadgeStyle(badgeText);
+        const tag = document.createElement('span');
+        tag.className = `wb-issue-tag wb-issue-tag--${kind}`;
+        tag.textContent = badgeText;
+        tagsRow.appendChild(tag);
+      }
+      btn.appendChild(tagsRow);
     }
-    btn.appendChild(tagsRow);
 
     btn.addEventListener('click', () => openArticleMistakes(art));
     els.articlesContainer.appendChild(btn);

@@ -20,6 +20,7 @@ const CITATION_NEEDED_RE = {
   es: /\{\{\s*(?:cita requerida|cr|referencias|quién|cuándo|dónde)\b[^}]*\}\}/gi,
   zh: /\{\{\s*(?:citation needed|cn|fact|来源请求|需要来源|无来源|who|when)\b[^}]*\}\}/gi,
   pl: /\{\{\s*(?:fakt|potrzebne źródło|citation needed|cn|kto|kiedy|gdzie)\b[^}]*\}\}/gi,
+  hu: /\{\{\s*(?:forrás\?|nincs forrás|citation needed|cn|ki|mikor|hol)\b[^}]*\}\}/gi,
 };
 
 const NPOV_TEMPLATE_RE = {
@@ -31,6 +32,7 @@ const NPOV_TEMPLATE_RE = {
   es: /\{\{\s*(?:no neutral|pvn|discutido|publicidad|tono|desacuerdo de neutralidad)\b[^}]*\}\}/i,
   zh: /\{\{\s*(?:pov|neutrality|中立性|不中立|非中立|advert|tone)\b[^}]*\}\}/i,
   pl: /\{\{\s*(?:pov|neutralność|niejasne|kontrowersyjny|reklama|styl)\b[^}]*\}\}/i,
+  hu: /\{\{\s*(?:pov|semlegesség|vitatott|reklám|elfogult)\b[^}]*\}\}/i,
 };
 
 const EMOTIONAL_WORDS_RE = {
@@ -42,6 +44,7 @@ const EMOTIONAL_WORDS_RE = {
   es: /\b(catastrófic\w*|bárbar\w*|brutal\w*|heroic\w*|glorios\w*|horrible\w*|vergonzos\w*|escandalos\w*|corrupt\w*|infame\w*|notori\w*|genial\w*|obra maestra|indudablemente|obviamente|tiránic\w*|sangrient\w*|traicioner\w*|propaganda\w*|terrorista\w*|criminal\w* de guerra|extremista\w*|fanátic\w*|masacre\w*|atrocidad\w*)\b/gi,
   zh: /(?:灾难性|残暴|野蛮|英雄般|辉煌|可耻|丑闻|腐败|臭名昭著|毫无疑问|显而易见|暴政|血腥|宣传|天才|杰作|令人震惊|极度|恐怖分子|战犯|极端主义|狂热|大屠杀|暴行|傀儡政权|叛徒)/g,
   pl: /(?:^|[^\p{L}])(katastrofaln\p{L}*|barbarzyń\p{L}*|brutaln\p{L}*|bohatersk\p{L}*|haniebn\p{L}*|skandaliczn\p{L}*|skorumpowan\p{L}*|zbrodnicz\p{L}*|zbrodni\p{L}*|okrutn\p{L}*|okrucieństw\p{L}*|ludobójstw\p{L}*|rzeź\p{L}*|rzezi\p{L}*|terroryst\p{L}*|kolaborant\p{L}*|zdrajc\p{L}*|morderc\p{L}*|propagand\p{L}*|ekstremist\p{L}*|fanatyk\p{L}*|krwaw\p{L}*|tyran\p{L}*|nazistowsk\p{L}*|faszystowsk\p{L}*|arcydzieł\p{L}*|genialn\p{L}*|niewątpliwie|oczywiście)/giu,
+  hu: /(?:^|[^\p{L}])(katasztrofális\p{L}*|barbár\p{L}*|brutális\p{L}*|hősies\p{L}*|szégyenteljes\p{L}*|botrányos\p{L}*|korrupt\p{L}*|bűnös\p{L}*|kegyetlen\p{L}*|kegyetlenség\p{L}*|népirtás\p{L}*|mészárlás\p{L}*|terrorist\p{L}*|kollaboráns\p{L}*|áruló\p{L}*|gyilkos\p{L}*|propagand\p{L}*|szélsőséges\p{L}*|fanatikus\p{L}*|véres\p{L}*|zsarnok\p{L}*|náci\p{L}*|fasiszta\p{L}*|remekmű\p{L}*|zseniális\p{L}*|kétségtelenül|nyilvánvalóan)/giu,
 };
 
 const browserAnalysisCache = new Map();
@@ -101,7 +104,20 @@ async function searchWikidataEntities(query) {
   }
 }
 
-const DISAMBIG_RE = /\((?:disambiguation|täsmennyssivu|olika betydelser|значения|täpsustus|desambiguación|消歧义|ujednoznacznienie)\)/i;
+const DISAMBIG_RE = /\((?:disambiguation|täsmennyssivu|olika betydelser|значения|täpsustus|desambiguación|消歧义|ujednoznacznienie|egyértelműsítő lap)\)/i;
+
+function escapeRegExp(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function hasWordBoundaryMatch(text, token) {
+  if (!text || !token) return false;
+  if (/[\u4e00-\u9fff]/.test(token)) {
+    return text.toLowerCase().includes(token.toLowerCase());
+  }
+  const re = new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(token)}([^\\p{L}\\p{N}]|$)`, 'iu');
+  return re.test(text);
+}
 
 function computeQueryTitleMatchScore(query, canonicalLabel, titlesObj) {
   const q = query.trim().toLowerCase();
@@ -115,20 +131,52 @@ function computeQueryTitleMatchScore(query, canonicalLabel, titlesObj) {
   for (const text of candidates) {
     if (text === q) {
       best = Math.max(best, 120);
-    } else if (text.startsWith(q)) {
+    } else if (text.startsWith(q) && hasWordBoundaryMatch(text, q)) {
       best = Math.max(best, 85);
-    } else if (text.includes(q)) {
-      best = Math.max(best, 65);
+    } else if (hasWordBoundaryMatch(text, q)) {
+      best = Math.max(best, 70);
     } else if (qTokens.length > 0) {
-      const matched = qTokens.filter((tok) => text.includes(tok)).length;
+      const matched = qTokens.filter((tok) => hasWordBoundaryMatch(text, tok)).length;
       if (matched === qTokens.length) {
         best = Math.max(best, 55);
       } else if (matched > 0) {
-        best = Math.max(best, Math.round((matched / qTokens.length) * 35));
+        best = Math.max(best, Math.round((matched / qTokens.length) * 20));
       }
     }
   }
   return best;
+}
+
+function isTopicRelevantToQuery(query, canonicalLabel, edMap) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const qTokens = q.split(/\s+/).filter((t) => t.length >= 2);
+
+  const titlesText = [
+    canonicalLabel,
+    ...Array.from(edMap.values()).map((e) => e.title),
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  // 1. Exact phrase or all query words (with word boundaries) in title/label -> definitely relevant
+  if (hasWordBoundaryMatch(titlesText, q)) return true;
+  if (qTokens.length > 0 && qTokens.every((tok) => hasWordBoundaryMatch(titlesText, tok))) {
+    return true;
+  }
+
+  // 2. For multi-word queries (e.g. "winter war"), require the exact phrase in an edition's lead extract
+  //    (eliminates "Warhammer", "Captain America: The Winter Soldier", etc.)
+  const leadTexts = Array.from(edMap.values())
+    .map((e) => (e.extract || '').slice(0, 700))
+    .join(' ');
+
+  if (qTokens.length >= 2) {
+    return hasWordBoundaryMatch(leadTexts, q);
+  }
+
+  // 3. Single-word query: require word-boundary match in lead extract
+  return hasWordBoundaryMatch(leadTexts, q);
 }
 
 function countInlineRefs(wikitext) {
@@ -256,6 +304,16 @@ function firstSentence(text, fallbackTitle) {
   return list[0] || fallbackTitle;
 }
 
+function classifyFigureCategory(raw, sentence) {
+  const s = (sentence || '').toLowerCase();
+  if (/%/.test(raw)) return 'percent';
+  if (/(?:km²|km2|mi²|ha\b|hektar|square\s+k|neliökilometr|квадратн)/i.test(s)) return 'area';
+  if (/(?:population|inhabitants|asukas|invånare|населен|elanik|habitant|人口|ludnoś|lakos|residents)/i.test(s)) return 'population';
+  if (/(?:dead|killed|died|casualties|missing|wounded|kuoll|kaatun|stupade|погиб|убит|пропавш|langen|muert|死亡|zginę|zabitych|halott)/i.test(s)) return 'casualties';
+  if (/(?:\bkm\b|\bmeters\b|\bmetres\b|metriä|meter\b|метр|kilometr)/i.test(s)) return 'distance';
+  return 'general';
+}
+
 function extractYearsAndFigures(text) {
   const lead = (text || '').slice(0, 1500);
   const years = new Set();
@@ -264,15 +322,21 @@ function extractYearsAndFigures(text) {
 
   const figures = new Map();
   const sents = splitSentences(lead);
-  const numRe = /\b\d{1,3}(?:[\s\u00a0.,]\d{3})+\b|\b\d{3,7}\b/g;
+  const numRe = /\b\d{1,3}(?:[\s\u00a0.,]\d{3})+(?:[.,]\d+)?%?|\b\d{2,7}(?:[.,]\d+)?%|\b\d{3,7}\b/g;
   for (const s of sents) {
     const matches = s.match(numRe) || [];
     for (const raw of matches) {
       const digits = raw.replace(/[^\d]/g, '');
       const val = Number(digits);
-      if (val >= 1500 && val <= 2035 && raw.length === 4) continue;
-      if (digits.length >= 3 && !figures.has(digits)) {
-        figures.set(digits, { raw: raw.trim(), sentence: s });
+      if (!Number.isFinite(val) || val === 0) continue;
+      if (val >= 1500 && val <= 2035 && raw.length === 4 && !/%/.test(raw)) continue;
+      if (digits.length >= 2 && !figures.has(digits)) {
+        figures.set(digits, {
+          raw: raw.trim(),
+          numericValue: val,
+          category: classifyFigureCategory(raw, s),
+          sentence: s,
+        });
       }
     }
   }
@@ -386,9 +450,13 @@ function scanEditionsForIssues(qid, canonicalLabel, editionsMap) {
       );
       if (!outlier) continue;
 
-      const outlierOtherYears = [...parsed[outlier].years].filter(
-        (y) => !presentIn.some((p) => parsed[p].years.has(y))
-      );
+      const outlierOtherYears = [...parsed[outlier].years].filter((y) => {
+        const yNum = Number(y);
+        return (
+          !presentIn.some((p) => parsed[p].years.has(y)) &&
+          Math.abs(yNum - Number(sharedYear)) <= 15
+        );
+      });
       if (outlierOtherYears.length > 0) {
         const altYear = outlierOtherYears[0];
         const outlierSent =
@@ -450,7 +518,7 @@ function scanEditionsForIssues(qid, canonicalLabel, editionsMap) {
     }
   }
 
-  // Conflicting multi-digit statistics/figures if no year conflict was emitted
+  // Conflicting same-category statistics/figures (never compare unrelated numbers from different topics)
   if (!foundFactDiff) {
     const langsWithFigs = langs.filter((l) => parsed[l].figures.size > 0);
     if (langsWithFigs.length >= 2) {
@@ -459,19 +527,40 @@ function scanEditionsForIssues(qid, canonicalLabel, editionsMap) {
         .sort((a, b) => a.refCount - b.refCount);
       const targetEd = sortedFigs[0];
       const donorEd = sortedFigs[sortedFigs.length - 1];
-      const targetKeys = [...parsed[targetEd.lang].figures.keys()];
-      const shared = targetKeys.some((k) => parsed[donorEd.lang].figures.has(k));
 
-      if (!shared) {
-        const targetEntry = [...parsed[targetEd.lang].figures.values()][0];
-        const donorEntry = [...parsed[donorEd.lang].figures.values()][0];
+      let matchedPair = null;
+      for (const [tKey, tEntry] of parsed[targetEd.lang].figures.entries()) {
+        if (parsed[donorEd.lang].figures.has(tKey)) continue;
+        // Find a figure in donorEd with the SAME semantic category (e.g. both population, both casualties, both area, both percent)
+        for (const [dKey, dEntry] of parsed[donorEd.lang].figures.entries()) {
+          if (tKey === dKey) continue;
+          if (tEntry.category !== dEntry.category) continue;
+          // If category is 'general' (no explicit unit/topic keyword), require compatible magnitude (within 4x)
+          if (tEntry.category === 'general') {
+            const ratio = Math.max(tEntry.numericValue, dEntry.numericValue) / Math.max(1, Math.min(tEntry.numericValue, dEntry.numericValue));
+            if (ratio > 4) continue;
+          }
+          // Ignore trivial < 2% rounding differences
+          const diffPct = Math.abs(tEntry.numericValue - dEntry.numericValue) / Math.max(1, dEntry.numericValue);
+          if (diffPct < 0.02) continue;
+
+          matchedPair = { targetEntry: tEntry, donorEntry: dEntry };
+          break;
+        }
+        if (matchedPair) break;
+      }
+
+      if (matchedPair) {
+        const { targetEntry, donorEntry } = matchedPair;
 
         const claims = buildClaimsMatrix(editionsMap, (code, ed) => {
-          const firstFig = [...parsed[code].figures.values()][0];
+          const sameCat = [...parsed[code].figures.values()].find(
+            (f) => f.category === targetEntry.category
+          );
           return {
-            value: firstFig
-              ? `${firstFig.raw} — "${firstFig.sentence.slice(0, 80)}"`
-              : `No matching figure in lead (${ed.refCount} refs)`,
+            value: sameCat
+              ? `${sameCat.raw} — "${sameCat.sentence.slice(0, 80)}"`
+              : `No matching ${targetEntry.category} figure in lead (${ed.refCount} refs)`,
             hasCitation: ed.refCount > 0,
             citationStatus: ed.refCount > 0 ? 'valid' : 'missing',
           };
@@ -755,8 +844,8 @@ export async function searchLiveFromBrowser(query) {
     action: 'wbgetentities',
     ids: uniqueQids.join('|'),
     props: 'sitelinks|labels',
-    sitefilter: 'fiwiki|svwiki|ruwiki|enwiki|etwiki|eswiki|zhwiki|plwiki',
-    languages: 'en|fi|sv|ru|et|es|zh|pl',
+    sitefilter: 'fiwiki|svwiki|ruwiki|enwiki|etwiki|eswiki|zhwiki|plwiki|huwiki',
+    languages: 'en|fi|sv|ru|et|es|zh|pl|hu',
     format: 'json',
     origin: '*',
   });
@@ -791,6 +880,7 @@ export async function searchLiveFromBrowser(query) {
       ent.labels?.es?.value ||
       ent.labels?.zh?.value ||
       ent.labels?.pl?.value ||
+      ent.labels?.hu?.value ||
       ent.labels?.ru?.value ||
       titles.fi ||
       titles.sv ||
@@ -798,16 +888,20 @@ export async function searchLiveFromBrowser(query) {
       titles.es ||
       titles.zh ||
       titles.pl ||
+      titles.hu ||
       titles.ru ||
       qid;
 
     if (DISAMBIG_RE.test(label)) continue;
 
     const titleMatchScore = computeQueryTitleMatchScore(q, label, titles);
+    const isExactMatch =
+      label.toLowerCase().trim() === q.toLowerCase() ||
+      Object.values(titles).some((t) => t && t.toLowerCase().trim() === q.toLowerCase());
     const searchRankScore = qidScoreMap.get(qid) || 0;
-    const relevanceScore = titleMatchScore * 2 + searchRankScore;
+    const relevanceScore = (isExactMatch ? 500 : 0) + titleMatchScore * 10 + searchRankScore;
 
-    candidates.push({ qid, canonicalLabel: label, titles, relevanceScore });
+    candidates.push({ qid, canonicalLabel: label, titles, relevanceScore, isExactMatch });
   }
 
   candidates.sort((a, b) => b.relevanceScore - a.relevanceScore);
@@ -836,10 +930,17 @@ export async function searchLiveFromBrowser(query) {
     });
     if (edMap.size < 2) continue;
 
-    const scan = scanEditionsForIssues(cand.qid, cand.canonicalLabel, edMap);
-    if (scan.discrepancies.length === 0) continue;
+    if (!isTopicRelevantToQuery(q, cand.canonicalLabel, edMap)) continue;
 
-    const maxSev = Math.max(...scan.discrepancies.map((d) => d.severityScore));
+    const scan = scanEditionsForIssues(cand.qid, cand.canonicalLabel, edMap);
+    // Always keep exact title match as #1 even if no issues were detected;
+    // for other related articles, only show those with detected issues.
+    if (scan.discrepancies.length === 0 && !cand.isExactMatch) continue;
+
+    const maxSev =
+      scan.discrepancies.length > 0
+        ? Math.max(...scan.discrepancies.map((d) => d.severityScore))
+        : 0;
     const refs = [...edMap.values()].map((e) => e.refCount);
     const minRef = Math.min(...refs);
 
@@ -854,7 +955,7 @@ export async function searchLiveFromBrowser(query) {
       };
     }
 
-    const issueBonus = Math.min(35, Math.round((maxSev + Math.max(0, 20 - minRef)) * 0.3));
+    const issueBonus = Math.min(20, Math.round((maxSev + Math.max(0, 20 - minRef)) * 0.18));
     const articleSummary = {
       qid: cand.qid,
       canonicalLabel: cand.canonicalLabel,
@@ -864,7 +965,8 @@ export async function searchLiveFromBrowser(query) {
       discrepancyCount: scan.discrepancies.length,
       discrepancySeverity: maxSev,
       issueBadges: scan.issueBadges,
-      priorityScore: cand.relevanceScore * 10 + issueBonus,
+      isExactMatch: cand.isExactMatch,
+      priorityScore: (cand.isExactMatch ? 1000000 : 0) + cand.relevanceScore * 100 + issueBonus,
     };
 
     browserAnalysisCache.set(cand.qid, {
