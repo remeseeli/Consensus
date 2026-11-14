@@ -1,6 +1,7 @@
 import {
   DEFAULT_API_BASE_URL,
-  LANG_NAMES,
+  getLangDisplayName,
+  LANG_FLAG_SVGS,
   SUPPORTED_LANGS,
 } from '../shared/constants.js';
 import { OFFLINE_ANALYSES, OFFLINE_ARTICLES } from '../shared/demoFallback.js';
@@ -13,6 +14,34 @@ import {
   translateToEnglish,
 } from '../shared/translator.js';
 
+const STORAGE_LANGS_KEY = 'wikibridge_selected_langs';
+const STORAGE_TOP5_KEY = 'wikibridge_include_top5';
+
+function loadSelectedLangs() {
+  try {
+    const raw = localStorage.getItem(STORAGE_LANGS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((l) => SUPPORTED_LANGS.includes(l));
+      }
+    }
+  } catch {
+    // Ignore storage errors
+  }
+  return [...SUPPORTED_LANGS];
+}
+
+function loadIncludeTop5() {
+  try {
+    const raw = localStorage.getItem(STORAGE_TOP5_KEY);
+    if (raw === 'false') return false;
+  } catch {
+    // Ignore
+  }
+  return true;
+}
+
 // Instant client-side caches so repeat queries and clicking articles take 0ms
 const clientSearchCache = new Map();
 const clientAnalysisCache = new Map();
@@ -23,6 +52,8 @@ let activeSearchToken = 0;
 const state = {
   apiBaseUrl: DEFAULT_API_BASE_URL,
   currentQuery: '',
+  selectedLangs: loadSelectedLangs(),
+  includeTopLongest: loadIncludeTop5(),
   articles: [],
   selectedArticle: null,
   selectedAnalysis: null,
@@ -31,7 +62,12 @@ const state = {
 const els = {
   searchForm: document.getElementById('search-form'),
   inputTopicQuery: document.getElementById('input-topic-query'),
-  searchTiming: document.getElementById('search-timing'),
+  btnSettings: document.getElementById('btn-settings'),
+  settingsDropdown: document.getElementById('settings-dropdown'),
+  settingsLangGrid: document.getElementById('settings-lang-grid'),
+  btnLangAll: document.getElementById('btn-lang-all'),
+  btnLangNone: document.getElementById('btn-lang-none'),
+  chkDynamicTop5: document.getElementById('chk-dynamic-top5'),
   feedbackBanner: document.getElementById('feedback-banner'),
   viewList: document.getElementById('view-article-list'),
   viewDetail: document.getElementById('view-article-detail'),
@@ -42,6 +78,103 @@ const els = {
   loadingDetail: document.getElementById('loading-detail'),
   detailContainer: document.getElementById('detail-container'),
 };
+
+function saveAndApplyLanguageSelection() {
+  try {
+    localStorage.setItem(STORAGE_LANGS_KEY, JSON.stringify(state.selectedLangs));
+  } catch {
+    // Ignore
+  }
+  clientSearchCache.clear();
+  clientAnalysisCache.clear();
+  if (state.currentQuery) runSearch();
+}
+
+function renderSettingsControls() {
+  els.settingsLangGrid.innerHTML = '';
+  for (const lang of SUPPORTED_LANGS) {
+    const label = document.createElement('label');
+    label.className = 'wb-lang-option';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = state.selectedLangs.includes(lang);
+    cb.addEventListener('change', () => {
+      if (cb.checked) {
+        if (!state.selectedLangs.includes(lang)) {
+          state.selectedLangs = SUPPORTED_LANGS.filter(
+            (l) => l === lang || state.selectedLangs.includes(l)
+          );
+        }
+      } else {
+        state.selectedLangs = state.selectedLangs.filter((l) => l !== lang);
+      }
+      saveAndApplyLanguageSelection();
+    });
+
+    const text = document.createElement('span');
+    text.textContent = lang.toUpperCase();
+    label.title = getLangDisplayName(lang);
+
+    label.appendChild(cb);
+    label.appendChild(text);
+
+    const flagSvg = LANG_FLAG_SVGS[lang];
+    if (flagSvg) {
+      const flagWrap = document.createElement('span');
+      flagWrap.className = 'wb-flag-wrap';
+      flagWrap.innerHTML = flagSvg;
+      label.appendChild(flagWrap);
+    }
+    els.settingsLangGrid.appendChild(label);
+  }
+
+  els.chkDynamicTop5.checked = state.includeTopLongest;
+}
+
+els.btnLangAll.addEventListener('click', () => {
+  state.selectedLangs = [...SUPPORTED_LANGS];
+  renderSettingsControls();
+  saveAndApplyLanguageSelection();
+});
+
+els.btnLangNone.addEventListener('click', () => {
+  state.selectedLangs = [];
+  renderSettingsControls();
+  saveAndApplyLanguageSelection();
+});
+
+els.chkDynamicTop5.addEventListener('change', () => {
+  state.includeTopLongest = els.chkDynamicTop5.checked;
+  try {
+    localStorage.setItem(STORAGE_TOP5_KEY, String(state.includeTopLongest));
+  } catch {
+    // Ignore
+  }
+  clientSearchCache.clear();
+  clientAnalysisCache.clear();
+  if (state.currentQuery) runSearch();
+});
+
+els.btnSettings.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const isHidden = els.settingsDropdown.classList.contains('hidden');
+  els.settingsDropdown.classList.toggle('hidden', !isHidden);
+  els.btnSettings.setAttribute('aria-expanded', String(isHidden));
+});
+
+document.addEventListener('click', (e) => {
+  if (
+    !els.settingsDropdown.classList.contains('hidden') &&
+    !els.settingsDropdown.contains(e.target) &&
+    !els.btnSettings.contains(e.target)
+  ) {
+    els.settingsDropdown.classList.add('hidden');
+    els.btnSettings.setAttribute('aria-expanded', 'false');
+  }
+});
+
+renderSettingsControls();
 
 // Non-blocking startup probe so we never stall on dead localhost TCP timeouts
 (async function probeBackendOnce() {
@@ -148,7 +281,6 @@ async function runSearch() {
   if (clientSearchCache.has(cacheKey)) {
     state.articles = clientSearchCache.get(cacheKey);
     els.loadingList.classList.add('hidden');
-    els.searchTiming.textContent = 'Instant (cached)';
     renderArticleList();
     return;
   }
@@ -156,23 +288,30 @@ async function runSearch() {
   if (!q && Date.now() < backendDownUntil) {
     state.articles = OFFLINE_ARTICLES;
     els.loadingList.classList.add('hidden');
-    els.searchTiming.textContent = 'FI · SV · RU · EN · ET · ES · ZH · PL · HU';
+    renderArticleList();
+    return;
+  }
+
+  if (q && state.selectedLangs.length === 0 && !state.includeTopLongest) {
+    state.articles = [];
+    els.loadingList.classList.add('hidden');
+    showError('Select at least one language or enable the 5 longest editions in Settings.');
     renderArticleList();
     return;
   }
 
   els.loadingList.classList.remove('hidden');
   els.articlesContainer.innerHTML = '';
-  els.searchTiming.textContent = 'Searching 9 languages...';
 
-  const startedAt = performance.now();
   let resolvedArticles = null;
 
-  // For topic searches, run the fast 9-language live scanner (with exact-match #1 ranking,
-  // relevance filtering, and emotional/NPOV detection). For empty query, check backend/offline list.
+  // For topic searches, run the fast live scanner with user-selected languages + dynamic top-5 longest editions.
   if (q) {
     try {
-      const liveArticles = await searchLiveFromBrowser(q);
+      const liveArticles = await searchLiveFromBrowser(q, {
+        selectedLangs: state.selectedLangs,
+        includeTopLongest: state.includeTopLongest,
+      });
       if (Array.isArray(liveArticles) && liveArticles.length > 0) {
         resolvedArticles = liveArticles;
       }
@@ -203,8 +342,6 @@ async function runSearch() {
   state.articles = resolvedArticles;
   clientSearchCache.set(cacheKey, resolvedArticles);
 
-  const elapsedSec = ((performance.now() - startedAt) / 1000).toFixed(2);
-  els.searchTiming.textContent = q ? `${elapsedSec}s` : 'FI · SV · RU · EN · ET · ES · ZH · PL · HU';
   els.loadingList.classList.add('hidden');
   renderArticleList();
 }
@@ -340,8 +477,19 @@ async function findInWikipediaPage(targetUrl, discrepancy) {
   }
 }
 
+function setIssueCardExpanded(card, expanded) {
+  if (!card) return;
+  card.classList.toggle('is-expanded', expanded);
+  const toggleBtn = card.querySelector('.wb-mistake-toggle');
+  if (toggleBtn) {
+    toggleBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    toggleBtn.title = expanded ? 'Click to minimize issue' : 'Click to expand issue';
+  }
+}
+
 function jumpToIssueCard(card) {
   if (!card) return;
+  setIssueCardExpanded(card, true);
   document
     .querySelectorAll('.wb-mistake-card--focused')
     .forEach((el) => el.classList.remove('wb-mistake-card--focused'));
@@ -369,28 +517,61 @@ function handleLanguageClick(art, lang, discrepancies, cardByLang, preferredDisc
   if (langUrl) {
     findInWikipediaPage(langUrl, matchingDisc);
   } else {
-    showError(`No Wikipedia article URL available for ${LANG_NAMES[lang] || lang.toUpperCase()}.`);
+    showError(`No Wikipedia article URL available for ${getLangDisplayName(lang)}.`);
   }
 }
 
+function getArticleLangKeys(art) {
+  const keys = Object.keys(art.editions || {}).filter((l) => Boolean(art.editions?.[l]?.title));
+  return keys.length > 0 ? keys : SUPPORTED_LANGS.filter((l) => Boolean(art.editions?.[l]?.title));
+}
+
 function renderReferenceStrip(art, discrepancies, cardByLang) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'wb-ref-card';
+
+  const toggleBtn = document.createElement('button');
+  toggleBtn.type = 'button';
+  toggleBtn.className = 'wb-ref-toggle';
+  toggleBtn.setAttribute('aria-expanded', 'false');
+  toggleBtn.title = 'Click to expand references';
+
+  const titleSpan = document.createElement('span');
+  titleSpan.className = 'wb-ref-title';
+  titleSpan.textContent = 'References';
+
+  const chevron = document.createElement('span');
+  chevron.className = 'wb-ref-chevron';
+  chevron.setAttribute('aria-hidden', 'true');
+  chevron.textContent = '\u25b8';
+
+  toggleBtn.appendChild(titleSpan);
+  toggleBtn.appendChild(chevron);
+  toggleBtn.addEventListener('click', () => {
+    const expanded = !wrapper.classList.contains('is-expanded');
+    wrapper.classList.toggle('is-expanded', expanded);
+    toggleBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    toggleBtn.title = expanded ? 'Click to minimize references' : 'Click to expand references';
+  });
+  wrapper.appendChild(toggleBtn);
+
+  const body = document.createElement('div');
+  body.className = 'wb-ref-body';
+
   const strip = document.createElement('div');
   strip.className = 'wb-ref-strip';
 
-  const presentCounts = SUPPORTED_LANGS
-    .filter((l) => Boolean(art.editions?.[l]?.title))
-    .map((l) => Number(art.editions?.[l]?.refCount ?? 0));
+  const langs = getArticleLangKeys(art);
+  const presentCounts = langs.map((l) => Number(art.editions?.[l]?.refCount ?? 0));
   const maxRefs = Math.max(0, ...presentCounts);
 
-  for (const lang of SUPPORTED_LANGS) {
+  for (const lang of langs) {
     const ed = art.editions?.[lang];
-    const hasEd = Boolean(ed?.title);
-    if (!hasEd) continue;
-
     const refs = Number(ed?.refCount ?? 0);
     const isLow =
       maxRefs >= 6 && (maxRefs >= refs * 2.5 || maxRefs - refs >= 12);
     const hasIssue = discrepancies.some((d) => d.targetLang === lang);
+    const langDisplay = getLangDisplayName(lang);
 
     const box = document.createElement('button');
     box.type = 'button';
@@ -398,15 +579,15 @@ function renderReferenceStrip(art, discrepancies, cardByLang) {
       hasIssue ? ' wb-ref-box--has-issue' : ''
     }`;
     box.title = hasIssue
-      ? `Open ${LANG_NAMES[lang]} Wikipedia & jump to issue`
-      : `Open ${LANG_NAMES[lang]} Wikipedia`;
+      ? `Open ${langDisplay} Wikipedia & jump to issue`
+      : `Open ${langDisplay} Wikipedia`;
     box.addEventListener('click', () =>
       handleLanguageClick(art, lang, discrepancies, cardByLang)
     );
 
     const langSpan = document.createElement('span');
     langSpan.className = 'wb-ref-box-lang';
-    langSpan.textContent = `${LANG_NAMES[lang]} (${lang.toUpperCase()})`;
+    langSpan.textContent = `${langDisplay} (${lang.toUpperCase()})${ed?.isDynamicLongest ? ' · Top 5' : ''}`;
 
     const valSpan = document.createElement('span');
     valSpan.className = 'wb-ref-box-val';
@@ -417,7 +598,9 @@ function renderReferenceStrip(art, discrepancies, cardByLang) {
     strip.appendChild(box);
   }
 
-  return strip;
+  body.appendChild(strip);
+  wrapper.appendChild(body);
+  return wrapper;
 }
 
 function renderArticleMistakes() {
@@ -468,6 +651,31 @@ function renderArticleMistakes() {
       cardByLang.set(disc.targetLang, card);
     }
 
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'wb-mistake-toggle';
+    toggleBtn.setAttribute('aria-expanded', 'false');
+    toggleBtn.title = 'Click to expand issue';
+
+    const claimTitle = document.createElement('span');
+    claimTitle.className = 'wb-mistake-heading';
+    claimTitle.textContent = disc.claimTopic;
+
+    const chevron = document.createElement('span');
+    chevron.className = 'wb-mistake-chevron';
+    chevron.setAttribute('aria-hidden', 'true');
+    chevron.textContent = '\u25b8';
+
+    toggleBtn.appendChild(claimTitle);
+    toggleBtn.appendChild(chevron);
+    toggleBtn.addEventListener('click', () => {
+      setIssueCardExpanded(card, !card.classList.contains('is-expanded'));
+    });
+    card.appendChild(toggleBtn);
+
+    const body = document.createElement('div');
+    body.className = 'wb-mistake-body';
+
     const header = document.createElement('div');
     header.className = 'wb-mistake-header';
 
@@ -475,7 +683,7 @@ function renderArticleMistakes() {
     typeBadge.className = `wb-issue-type-badge${badgeModifier}`;
     typeBadge.textContent = issueLabel;
 
-    const langFull = LANG_NAMES[disc.targetLang] || disc.targetLang.toUpperCase();
+    const langFull = getLangDisplayName(disc.targetLang);
     const langTarget = document.createElement('button');
     langTarget.type = 'button';
     langTarget.className = 'wb-issue-target-lang wb-issue-target-lang--link';
@@ -487,24 +695,19 @@ function renderArticleMistakes() {
 
     header.appendChild(typeBadge);
     header.appendChild(langTarget);
-    card.appendChild(header);
-
-    const claimTitle = document.createElement('h3');
-    claimTitle.className = 'wb-mistake-heading';
-    claimTitle.textContent = disc.claimTopic;
-    card.appendChild(claimTitle);
+    body.appendChild(header);
 
     const desc = document.createElement('p');
     desc.className = 'wb-mistake-desc';
     desc.textContent = disc.summary;
-    card.appendChild(desc);
+    body.appendChild(desc);
 
     const claimsObj = disc.agreementMatrix?.claims;
     if (claimsObj) {
       const compareBox = document.createElement('div');
       compareBox.className = 'wb-claims-compare';
 
-      for (const lang of SUPPORTED_LANGS) {
+      for (const lang of Object.keys(claimsObj)) {
         const val = claimsObj[lang]?.value;
         if (!val || val === 'Edition missing' || val === 'Article missing') continue;
 
@@ -516,8 +719,8 @@ function renderArticleMistakes() {
           isFlagged ? ' wb-claim-line--flagged' : ''
         }`;
         row.title = langHasIssue
-          ? `Open ${LANG_NAMES[lang]} Wikipedia & jump to its issue`
-          : `Open ${LANG_NAMES[lang]} Wikipedia`;
+          ? `Open ${getLangDisplayName(lang)} Wikipedia & jump to its issue`
+          : `Open ${getLangDisplayName(lang)} Wikipedia`;
         row.addEventListener('click', () =>
           handleLanguageClick(art, lang, discrepancies, cardByLang, disc)
         );
@@ -534,7 +737,7 @@ function renderArticleMistakes() {
         row.appendChild(text);
         compareBox.appendChild(row);
       }
-      card.appendChild(compareBox);
+      body.appendChild(compareBox);
     }
 
     const highlightOrSnippet = disc.highlightPhrase || disc.disputedSnippet;
@@ -565,7 +768,7 @@ function renderArticleMistakes() {
         });
       }
 
-      card.appendChild(quote);
+      body.appendChild(quote);
     }
 
     const targetUrl = art.editions?.[disc.targetLang]?.url || '';
@@ -575,7 +778,8 @@ function renderArticleMistakes() {
     findBtn.textContent = `Find in ${langFull} Wikipedia \u2192`;
     findBtn.addEventListener('click', () => findInWikipediaPage(targetUrl, disc));
 
-    card.appendChild(findBtn);
+    body.appendChild(findBtn);
+    card.appendChild(body);
     els.detailContainer.appendChild(card);
   }
 }

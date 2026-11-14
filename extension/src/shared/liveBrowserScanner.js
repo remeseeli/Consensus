@@ -1,4 +1,4 @@
-import { LANG_NAMES, SUPPORTED_LANGS } from './constants.js';
+import { getLangDisplayName, SUPPORTED_LANGS } from './constants.js';
 
 /**
  * Fast Direct Browser Scanner (also serves as instant fallback when localhost:4000 is down).
@@ -21,6 +21,14 @@ const CITATION_NEEDED_RE = {
   zh: /\{\{\s*(?:citation needed|cn|fact|来源请求|需要来源|无来源|who|when)\b[^}]*\}\}/gi,
   pl: /\{\{\s*(?:fakt|potrzebne źródło|citation needed|cn|kto|kiedy|gdzie)\b[^}]*\}\}/gi,
   hu: /\{\{\s*(?:forrás\?|nincs forrás|citation needed|cn|ki|mikor|hol)\b[^}]*\}\}/gi,
+  de: /\{\{\s*(?:belege fehlen|quelle|citation needed|cn|wer|wann)\b[^}]*\}\}/gi,
+  fr: /\{\{\s*(?:référence souhaitée|référence nécessaire|refnec|refsou|citation needed)\b[^}]*\}\}/gi,
+  it: /\{\{\s*(?:citazione necessaria|cn|senza fonte|chiarire)\b[^}]*\}\}/gi,
+  uk: /\{\{\s*(?:джерело|немає джерел|citation needed|cn|хто|коли)\b[^}]*\}\}/gi,
+  pt: /\{\{\s*(?:carece de fontes|sem fontes|citation needed|cn)\b[^}]*\}\}/gi,
+  ja: /\{\{\s*(?:要出典|出典無効|citation needed|cn)\b[^}]*\}\}/gi,
+  no: /\{\{\s*(?:trenger referanse|tr|referanse|citation needed|cn|hvem|når)\b[^}]*\}\}/gi,
+  tr: /\{\{\s*(?:kaynak belirt|kaynak\?|citation needed|cn|kim|nerede|ne zaman)\b[^}]*\}\}/gi,
 };
 
 const NPOV_TEMPLATE_RE = {
@@ -33,6 +41,14 @@ const NPOV_TEMPLATE_RE = {
   zh: /\{\{\s*(?:pov|neutrality|中立性|不中立|非中立|advert|tone)\b[^}]*\}\}/i,
   pl: /\{\{\s*(?:pov|neutralność|niejasne|kontrowersyjny|reklama|styl)\b[^}]*\}\}/i,
   hu: /\{\{\s*(?:pov|semlegesség|vitatott|reklám|elfogult)\b[^}]*\}\}/i,
+  de: /\{\{\s*(?:neutralität|pov|unausgewogen|werbung|ton)\b[^}]*\}\}/i,
+  fr: /\{\{\s*(?:désaccord de neutralité|neutralité|pov|non neutre|pub)\b[^}]*\}\}/i,
+  it: /\{\{\s*(?:p|pov|neutralità|non neutrale|tono)\b[^}]*\}\}/i,
+  uk: /\{\{\s*(?:нтз|нейтральність|ненейтрально|pov|перевірити нейтральність)\b[^}]*\}\}/i,
+  pt: /\{\{\s*(?:parcial|pov|parcialidade|sem neutralidade)\b[^}]*\}\}/i,
+  ja: /\{\{\s*(?:観点|中立的観点|pov|宣伝)\b[^}]*\}\}/i,
+  no: /\{\{\s*(?:objektivitet|pov|nøytralitet|reklame|ensidig)\b[^}]*\}\}/i,
+  tr: /\{\{\s*(?:taraflı|tarafsızlık|pov|reklam|üslup)\b[^}]*\}\}/i,
 };
 
 const EMOTIONAL_WORDS_RE = {
@@ -45,6 +61,13 @@ const EMOTIONAL_WORDS_RE = {
   zh: /(?:灾难性|残暴|野蛮|英雄般|辉煌|可耻|丑闻|腐败|臭名昭著|毫无疑问|显而易见|暴政|血腥|宣传|天才|杰作|令人震惊|极度|恐怖分子|战犯|极端主义|狂热|大屠杀|暴行|傀儡政权|叛徒)/g,
   pl: /(?:^|[^\p{L}])(katastrofaln\p{L}*|barbarzyń\p{L}*|brutaln\p{L}*|bohatersk\p{L}*|haniebn\p{L}*|skandaliczn\p{L}*|skorumpowan\p{L}*|zbrodnicz\p{L}*|zbrodni\p{L}*|okrutn\p{L}*|okrucieństw\p{L}*|ludobójstw\p{L}*|rzeź\p{L}*|rzezi\p{L}*|terroryst\p{L}*|kolaborant\p{L}*|zdrajc\p{L}*|morderc\p{L}*|propagand\p{L}*|ekstremist\p{L}*|fanatyk\p{L}*|krwaw\p{L}*|tyran\p{L}*|nazistowsk\p{L}*|faszystowsk\p{L}*|arcydzieł\p{L}*|genialn\p{L}*|niewątpliwie|oczywiście)/giu,
   hu: /(?:^|[^\p{L}])(katasztrofális\p{L}*|barbár\p{L}*|brutális\p{L}*|hősies\p{L}*|szégyenteljes\p{L}*|botrányos\p{L}*|korrupt\p{L}*|bűnös\p{L}*|kegyetlen\p{L}*|kegyetlenség\p{L}*|népirtás\p{L}*|mészárlás\p{L}*|terrorist\p{L}*|kollaboráns\p{L}*|áruló\p{L}*|gyilkos\p{L}*|propagand\p{L}*|szélsőséges\p{L}*|fanatikus\p{L}*|véres\p{L}*|zsarnok\p{L}*|náci\p{L}*|fasiszta\p{L}*|remekmű\p{L}*|zseniális\p{L}*|kétségtelenül|nyilvánvalóan)/giu,
+  de: /(?:^|[^\p{L}])(katastrophal\p{L}*|barbarisch\p{L}*|brutal\p{L}*|heldenhaft\p{L}*|schändlich\p{L}*|skandalös\p{L}*|korrupt\p{L}*|verbrecherisch\p{L}*|grausam\p{L}*|gräueltat\p{L}*|völkermord\p{L}*|massaker\p{L}*|terrorist\p{L}*|kollaborateur\p{L}*|verräter\p{L}*|mörder\p{L}*|propagand\p{L}*|extremist\p{L}*|fanatisch\p{L}*|blutig\p{L}*|tyrann\p{L}*|genial\p{L}*|meisterwerk|zweifellos|offensichtlich)/giu,
+  fr: /(?:^|[^\p{L}])(catastrophique\p{L}*|barbare\p{L}*|brutal\p{L}*|héroïque\p{L}*|honteux\p{L}*|scandaleux\p{L}*|corrompu\p{L}*|criminel\p{L}*|cruel\p{L}*|atrocit\p{L}*|génocide\p{L}*|massacre\p{L}*|terroriste\p{L}*|collaborateur\p{L}*|traître\p{L}*|meurtrier\p{L}*|propagande|extrémiste\p{L}*|fanatique\p{L}*|sanglant\p{L}*|tyran\p{L}*|chef-d'œuvre|génial\p{L}*|sans aucun doute|évidemment)/giu,
+  it: /(?:^|[^\p{L}])(catastrofic\p{L}*|barbar\p{L}*|brutal\p{L}*|eroic\p{L}*|vergognos\p{L}*|scandalos\p{L}*|corrott\p{L}*|criminal\p{L}*|crudel\p{L}*|atrocit\p{L}*|genocidio|massacro|terrorist\p{L}*|collaborazionist\p{L}*|traditor\p{L}*|assassin\p{L}*|propaganda|estremist\p{L}*|fanatic\p{L}*|sanguinos\p{L}*|tirann\p{L}*|capolavoro|genial\p{L}*|indubbiamente|ovviamente)/giu,
+  uk: /(?:^|[^\p{L}])(катастрофічн\p{L}*|варварськ\p{L}*|жорсток\p{L}*|героїчн\p{L}*|ганебн\p{L}*|скандальн\p{L}*|корумпован\p{L}*|злочинн\p{L}*|звірств\p{L}*|геноцид\p{L}*|різанин\p{L}*|терорист\p{L}*|колаборант\p{L}*|зрадник\p{L}*|убивц\p{L}*|пропаганд\p{L}*|екстреміст\p{L}*|фанатик\p{L}*|кривав\p{L}*|тиран\p{L}*|шедевр\p{L}*|геніальн\p{L}*|безперечно|очевидно)/giu,
+  pt: /(?:^|[^\p{L}])(catastrófic\p{L}*|bárbar\p{L}*|brutal\p{L}*|heroic\p{L}*|vergonhos\p{L}*|escandalos\p{L}*|corrupt\p{L}*|criminos\p{L}*|cruel\p{L}*|atrocidad\p{L}*|genocídio|massacre|terrorista\p{L}*|colaborador\p{L}*|traidor\p{L}*|assassino\p{L}*|propaganda|extremista\p{L}*|fanático\p{L}*|sangrent\p{L}*|tirano|obra-prima|genial|indubitavelmente|obviamente)/giu,
+  no: /(?:^|[^\p{L}])(katastrofal\p{L}*|barbarisk\p{L}*|brutal\p{L}*|heltemodig\p{L}*|skammelig\p{L}*|skandaløs\p{L}*|korrupt\p{L}*|forbrytersk\p{L}*|grusom\p{L}*|grusomhet\p{L}*|folkemord|massakre|terrorist\p{L}*|kollaboratør\p{L}*|forræder\p{L}*|morder\p{L}*|propaganda|ekstremist\p{L}*|fanatisk\p{L}*|blodig\p{L}*|tyrann\p{L}*|mesterverk|genial\p{L}*|utvilsomt|selvfølgelig)/giu,
+  tr: /(?:^|[^\p{L}])(felaket\p{L}*|barbar\p{L}*|vahşi\p{L}*|kahraman\p{L}*|utanç verici|skandal\p{L}*|yozlaşm\p{L}*|suçlu\p{L}*|zalim\p{L}*|katliam\p{L}*|soykırım\p{L}*|terörist\p{L}*|hain\p{L}*|katil\p{L}*|propaganda\p{L}*|aşırı\p{L}*|fanatik\p{L}*|kanlı|tiran\p{L}*|şaheser|dahi\p{L}*|şüphesiz|açıkça)/giu,
 };
 
 const browserAnalysisCache = new Map();
@@ -104,7 +127,7 @@ async function searchWikidataEntities(query) {
   }
 }
 
-const DISAMBIG_RE = /\((?:disambiguation|täsmennyssivu|olika betydelser|значения|täpsustus|desambiguación|消歧义|ujednoznacznienie|egyértelműsítő lap)\)/i;
+const DISAMBIG_RE = /\((?:disambiguation|täsmennyssivu|olika betydelser|значения|täpsustus|desambiguación|消歧义|ujednoznacznienie|egyértelműsítő lap|flere betydninger)\)/i;
 
 function escapeRegExp(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -187,9 +210,68 @@ function countInlineRefs(wikitext) {
   return fullTags.length + Math.ceil(selfClosing.length * 0.5) + sfn.length;
 }
 
+async function fetchBatchLengths(lang, items) {
+  const out = new Map();
+  if (!items.length) return out;
+
+  const titleToQids = new Map();
+  for (const it of items) {
+    const key = it.title.toLowerCase();
+    if (!titleToQids.has(key)) titleToQids.set(key, []);
+    titleToQids.get(key).push(it.qid);
+  }
+
+  const params = new URLSearchParams({
+    action: 'query',
+    prop: 'info',
+    redirects: '1',
+    titles: [...new Set(items.map((i) => i.title))].slice(0, 20).join('|'),
+    format: 'json',
+    origin: '*',
+  });
+
+  try {
+    const data = await fetchJsonFast(`https://${lang}.wikipedia.org/w/api.php?${params}`, 5000);
+    const normMap = new Map();
+    for (const n of data?.query?.normalized || []) {
+      normMap.set(n.to.toLowerCase(), n.from.toLowerCase());
+    }
+    for (const r of data?.query?.redirects || []) {
+      const orig = normMap.get(r.from.toLowerCase()) || r.from.toLowerCase();
+      normMap.set(r.to.toLowerCase(), orig);
+    }
+
+    for (const page of Object.values(data?.query?.pages || {})) {
+      if (!page || page.missing !== undefined || !page.title) continue;
+      const pLower = page.title.toLowerCase();
+      const origLower = normMap.get(pLower) || pLower;
+      const qids = titleToQids.get(origLower) || titleToQids.get(pLower) || [];
+      for (const qid of qids) {
+        out.set(qid, Number(page.length || 0));
+      }
+    }
+  } catch {
+    // Ignore failed length probe
+  }
+  return out;
+}
+
+function getCnRegex(lang) {
+  return CITATION_NEEDED_RE[lang] || CITATION_NEEDED_RE.en;
+}
+
+function getNpovRegex(lang) {
+  return NPOV_TEMPLATE_RE[lang] || NPOV_TEMPLATE_RE.en;
+}
+
+function getEmotionalRegex(lang) {
+  return EMOTIONAL_WORDS_RE[lang] || EMOTIONAL_WORDS_RE.en;
+}
+
 function extractCitationNeededSnippet(wikitext, lang) {
-  if (!wikitext || !CITATION_NEEDED_RE[lang]) return null;
-  const re = new RegExp(CITATION_NEEDED_RE[lang].source, 'gi');
+  const cnRe = getCnRegex(lang);
+  if (!wikitext || !cnRe) return null;
+  const re = new RegExp(cnRe.source, 'gi');
   const m = re.exec(wikitext);
   if (!m || m.index === undefined) return null;
   const before = wikitext.slice(Math.max(0, m.index - 240), m.index);
@@ -225,69 +307,79 @@ async function fetchBatchEditions(lang, items) {
   const out = new Map();
   if (!items.length) return out;
 
-  const titleToQid = new Map();
-  for (const it of items) {
-    titleToQid.set(it.title.toLowerCase(), it.qid);
+  // Chunk into small groups of 4 titles so MediaWiki never truncates `revisions` on large articles
+  const chunks = [];
+  for (let i = 0; i < items.length; i += 4) {
+    chunks.push(items.slice(i, i + 4));
   }
 
-  const params = new URLSearchParams({
-    action: 'query',
-    prop: 'extracts|revisions',
-    exintro: '1',
-    explaintext: '1',
-    exlimit: 'max',
-    rvprop: 'timestamp|content',
-    rvslots: 'main',
-    redirects: '1',
-    titles: items.map((i) => i.title).join('|'),
-    format: 'json',
-    origin: '*',
-  });
+  await Promise.all(
+    chunks.map(async (chunk) => {
+      const titleToQid = new Map();
+      for (const it of chunk) {
+        titleToQid.set(it.title.toLowerCase(), it.qid);
+      }
 
-  try {
-    const data = await fetchJsonFast(`https://${lang}.wikipedia.org/w/api.php?${params}`, 5500);
-    const normMap = new Map();
-    for (const n of data?.query?.normalized || []) {
-      normMap.set(n.to.toLowerCase(), n.from.toLowerCase());
-    }
-    for (const r of data?.query?.redirects || []) {
-      const orig = normMap.get(r.from.toLowerCase()) || r.from.toLowerCase();
-      normMap.set(r.to.toLowerCase(), orig);
-    }
-
-    for (const page of Object.values(data?.query?.pages || {})) {
-      if (!page || page.missing !== undefined || !page.title) continue;
-      const pLower = page.title.toLowerCase();
-      const origLower = normMap.get(pLower) || pLower;
-      const qid = titleToQid.get(origLower) || titleToQid.get(pLower);
-      if (!qid) continue;
-
-      const rev = page.revisions?.[0];
-      const wikitext = rev?.slots?.main?.['*'] || rev?.['*'] || '';
-      const cnRe = CITATION_NEEDED_RE[lang];
-      const cnMatches = cnRe ? wikitext.match(cnRe) || [] : [];
-      const hasNpovTemplate = NPOV_TEMPLATE_RE[lang]
-        ? NPOV_TEMPLATE_RE[lang].test(wikitext)
-        : false;
-      const bodyPlain = stripWikitextToPlain(wikitext.slice(0, 18000));
-
-      out.set(qid, {
-        qid,
-        lang,
-        title: page.title,
-        url: buildWikiUrl(lang, page.title),
-        extract: (page.extract || '').trim(),
-        bodyPlain,
-        refCount: countInlineRefs(wikitext),
-        citationNeededTags: cnMatches.length,
-        cnSnippet: extractCitationNeededSnippet(wikitext, lang),
-        hasNpovTemplate,
-        lastRevAt: rev?.timestamp || null,
+      const params = new URLSearchParams({
+        action: 'query',
+        prop: 'extracts|revisions',
+        exintro: '1',
+        explaintext: '1',
+        exlimit: 'max',
+        rvprop: 'timestamp|content',
+        rvslots: 'main',
+        redirects: '1',
+        titles: chunk.map((i) => i.title).join('|'),
+        format: 'json',
+        origin: '*',
       });
-    }
-  } catch {
-    // Ignore failed language batch
-  }
+
+      try {
+        const data = await fetchJsonFast(`https://${lang}.wikipedia.org/w/api.php?${params}`, 6500);
+        const normMap = new Map();
+        for (const n of data?.query?.normalized || []) {
+          normMap.set(n.to.toLowerCase(), n.from.toLowerCase());
+        }
+        for (const r of data?.query?.redirects || []) {
+          const orig = normMap.get(r.from.toLowerCase()) || r.from.toLowerCase();
+          normMap.set(r.to.toLowerCase(), orig);
+        }
+
+        for (const page of Object.values(data?.query?.pages || {})) {
+          if (!page || page.missing !== undefined || !page.title) continue;
+          const pLower = page.title.toLowerCase();
+          const origLower = normMap.get(pLower) || pLower;
+          const qid = titleToQid.get(origLower) || titleToQid.get(pLower);
+          if (!qid) continue;
+
+          const rev = page.revisions?.[0];
+          const wikitext = rev?.slots?.main?.['*'] || rev?.['*'] || '';
+          const cnRe = getCnRegex(lang);
+          const cnMatches = cnRe ? wikitext.match(cnRe) || [] : [];
+          const npovRe = getNpovRegex(lang);
+          const hasNpovTemplate = npovRe ? npovRe.test(wikitext) : false;
+          const bodyPlain = stripWikitextToPlain(wikitext.slice(0, 18000));
+
+          out.set(qid, {
+            qid,
+            lang,
+            title: page.title,
+            url: buildWikiUrl(lang, page.title),
+            extract: (page.extract || '').trim(),
+            bodyPlain,
+            refCount: countInlineRefs(wikitext),
+            citationNeededTags: cnMatches.length,
+            cnSnippet: extractCitationNeededSnippet(wikitext, lang),
+            hasNpovTemplate,
+            lastRevAt: rev?.timestamp || null,
+          });
+        }
+      } catch {
+        // Ignore failed chunk
+      }
+    })
+  );
+
   return out;
 }
 
@@ -348,7 +440,7 @@ function scoreEmotionalNeutrality(ed) {
   const bodySents = splitSentences(ed.bodyPlain || ed.extract);
   const allSents = leadSents.length > 0 ? [...leadSents, ...bodySents.slice(0, 45)] : bodySents.slice(0, 45);
 
-  const wordRe = EMOTIONAL_WORDS_RE[ed.lang];
+  const wordRe = getEmotionalRegex(ed.lang);
   let bestSentence = null;
   let bestWords = [];
   let bestScore = 0;
@@ -410,19 +502,14 @@ function detectEmotionalNeutralityIssue(ed, allEditionScores = []) {
 
 function buildClaimsMatrix(editionsMap, mapper) {
   const claims = {};
-  for (const code of SUPPORTED_LANGS) {
-    const ed = editionsMap.get(code);
-    if (!ed) {
-      claims[code] = { value: 'Edition missing', hasCitation: false, citationStatus: 'edition_missing' };
-    } else {
-      claims[code] = mapper(code, ed);
-    }
+  for (const [code, ed] of editionsMap.entries()) {
+    claims[code] = mapper(code, ed);
   }
   return claims;
 }
 
 function scanEditionsForIssues(qid, canonicalLabel, editionsMap) {
-  const langs = SUPPORTED_LANGS.filter((l) => editionsMap.has(l));
+  const langs = Array.from(editionsMap.keys());
   if (langs.length < 2) return { discrepancies: [], issueBadges: [], overallSummary: '' };
 
   const discrepancies = [];
@@ -492,7 +579,7 @@ function scanEditionsForIssues(qid, canonicalLabel, editionsMap) {
           issueLabel: 'Different information',
           targetLang: outlier,
           claimTopic: `Different dates in intro (${altYear} vs. ${sharedYear})`,
-          summary: `${presentIn.map((l) => l.toUpperCase()).join(' & ')} Wikipedia state ${sharedYear}, while ${LANG_NAMES[outlier]} Wikipedia states ${altYear}.`,
+          summary: `${presentIn.map((l) => l.toUpperCase()).join(' & ')} Wikipedia state ${sharedYear}, while ${getLangDisplayName(outlier)} Wikipedia states ${altYear}.`,
           disputedSnippet: outlierSent,
           highlightPhrase: altYear,
           sectionHeading: null,
@@ -573,7 +660,7 @@ function scanEditionsForIssues(qid, canonicalLabel, editionsMap) {
           issueLabel: 'Different information',
           targetLang: targetEd.lang,
           claimTopic: `Different figures in intro (${targetEntry.raw} vs. ${donorEntry.raw})`,
-          summary: `${LANG_NAMES[targetEd.lang]} Wikipedia states "${targetEntry.raw}", whereas ${LANG_NAMES[donorEd.lang]} Wikipedia states "${donorEntry.raw}".`,
+          summary: `${getLangDisplayName(targetEd.lang)} Wikipedia states "${targetEntry.raw}", whereas ${getLangDisplayName(donorEd.lang)} Wikipedia states "${donorEntry.raw}".`,
           disputedSnippet: targetEntry.sentence,
           highlightPhrase: targetEntry.raw,
           sectionHeading: null,
@@ -608,8 +695,8 @@ function scanEditionsForIssues(qid, canonicalLabel, editionsMap) {
     const pov = detectEmotionalNeutralityIssue(ed, povScores);
     if (pov.hasIssue) {
       const reasonText = pov.hasNpovTemplate
-        ? `Wikipedia editors flagged this ${LANG_NAMES[l]} article with a Neutrality / POV warning template${pov.emotionalTerms.length ? ` and loaded wording (${pov.emotionalTerms.slice(0, 4).join(', ')})` : ''}.`
-        : `${LANG_NAMES[l]} Wikipedia uses emotionally loaded or non-neutral wording (${pov.totalHits} loaded occurrences, e.g. "${pov.emotionalTerms.slice(0, 4).join('", "')}").`;
+        ? `Wikipedia editors flagged this ${getLangDisplayName(l)} article with a Neutrality / POV warning template${pov.emotionalTerms.length ? ` and loaded wording (${pov.emotionalTerms.slice(0, 4).join(', ')})` : ''}.`
+        : `${getLangDisplayName(l)} Wikipedia uses emotionally loaded or non-neutral wording (${pov.totalHits} loaded occurrences, e.g. "${pov.emotionalTerms.slice(0, 4).join('", "')}").`;
 
       const claims = buildClaimsMatrix(editionsMap, (code, otherEd) => {
         const otherPov = detectEmotionalNeutralityIssue(otherEd, povScores);
@@ -628,7 +715,7 @@ function scanEditionsForIssues(qid, canonicalLabel, editionsMap) {
         mismatchType: 'neutrality_bias',
         issueLabel: 'Not neutral (emotional tone)',
         targetLang: l,
-        claimTopic: `Emotional or non-neutral point of view in ${LANG_NAMES[l]} Wikipedia`,
+        claimTopic: `Emotional or non-neutral point of view in ${getLangDisplayName(l)} Wikipedia`,
         summary: reasonText,
         disputedSnippet: pov.sentence,
         highlightPhrase: pov.highlightPhrase,
@@ -679,8 +766,8 @@ function scanEditionsForIssues(qid, canonicalLabel, editionsMap) {
       mismatchType: 'missing_citation',
       issueLabel: 'Much fewer references',
       targetLang: lowestEd.lang,
-      claimTopic: `${LANG_NAMES[lowestEd.lang]} Wikipedia has only ${lowestEd.refCount} references (vs. ${highestEd.refCount} in ${LANG_NAMES[highestEd.lang]})`,
-      summary: `${LANG_NAMES[lowestEd.lang]} edition has ${pctLess}% fewer references (${lowestEd.refCount} vs. ${highestEd.refCount} in ${LANG_NAMES[highestEd.lang]}), leaving claims weakly sourced.`,
+      claimTopic: `${getLangDisplayName(lowestEd.lang)} Wikipedia has only ${lowestEd.refCount} references (vs. ${highestEd.refCount} in ${getLangDisplayName(highestEd.lang)})`,
+      summary: `${getLangDisplayName(lowestEd.lang)} edition has ${pctLess}% fewer references (${lowestEd.refCount} vs. ${highestEd.refCount} in ${getLangDisplayName(highestEd.lang)}), leaving claims weakly sourced.`,
       disputedSnippet: lowestEd.cnSnippet || firstSentence(lowestEd.extract, lowestEd.title),
       highlightPhrase: null,
       sectionHeading: null,
@@ -723,8 +810,8 @@ function scanEditionsForIssues(qid, canonicalLabel, editionsMap) {
         mismatchType: 'missing_citation',
         issueLabel: 'Missing reference',
         targetLang: l,
-        claimTopic: `${ed.citationNeededTags} [citation needed] tag(s) in ${LANG_NAMES[l]} Wikipedia`,
-        summary: `${LANG_NAMES[l]} edition explicitly marks ${ed.citationNeededTags} claim(s) as lacking a reliable source.`,
+        claimTopic: `${ed.citationNeededTags} [citation needed] tag(s) in ${getLangDisplayName(l)} Wikipedia`,
+        summary: `${getLangDisplayName(l)} edition explicitly marks ${ed.citationNeededTags} claim(s) as lacking a reliable source.`,
         disputedSnippet: ed.cnSnippet || firstSentence(ed.extract, ed.title),
         highlightPhrase: ed.cnSnippet || null,
         sectionHeading: null,
@@ -775,8 +862,8 @@ function scanEditionsForIssues(qid, canonicalLabel, editionsMap) {
         mismatchType: 'outdated_data',
         issueLabel: 'Outdated information',
         targetLang: oldest.ed.lang,
-        claimTopic: `${LANG_NAMES[oldest.ed.lang]} edition not updated since ${oldYear}`,
-        summary: `${LANG_NAMES[oldest.ed.lang]} Wikipedia has not been updated since ${oldYear}, while ${LANG_NAMES[newest.ed.lang]} Wikipedia was updated in ${newYear}.`,
+        claimTopic: `${getLangDisplayName(oldest.ed.lang)} edition not updated since ${oldYear}`,
+        summary: `${getLangDisplayName(oldest.ed.lang)} Wikipedia has not been updated since ${oldYear}, while ${getLangDisplayName(newest.ed.lang)} Wikipedia was updated in ${newYear}.`,
         disputedSnippet: firstSentence(oldest.ed.extract, oldest.ed.title),
         highlightPhrase: null,
         sectionHeading: null,
@@ -808,13 +895,29 @@ function scanEditionsForIssues(qid, canonicalLabel, editionsMap) {
   };
 }
 
-export async function searchLiveFromBrowser(query) {
+const MAJOR_WIKI_PRIORITY = [
+  'en', 'de', 'fr', 'es', 'ru', 'it', 'ja', 'pt', 'zh', 'pl', 'nl', 'uk',
+  'ar', 'sv', 'fi', 'hu', 'cs', 'ko', 'tr', 'vi', 'id', 'fa', 'no', 'da',
+  'he', 'ro', 'et', 'bg', 'sr', 'ca', 'el',
+];
+
+export async function searchLiveFromBrowser(query, options = {}) {
   const q = query.trim();
   if (!q) return null;
 
+  const activeLangs = Array.isArray(options.selectedLangs)
+    ? options.selectedLangs
+    : SUPPORTED_LANGS;
+  const includeTopLongest = options.includeTopLongest !== false;
+
+  if (activeLangs.length === 0 && !includeTopLongest) {
+    return [];
+  }
+
+  const discoveryLangs = activeLangs.length > 0 ? activeLangs : ['en'];
   const [wdQids, ...wikiQidLists] = await Promise.all([
     searchWikidataEntities(q),
-    ...SUPPORTED_LANGS.map((lang) => searchQidsOnWiki(lang, q)),
+    ...discoveryLangs.map((lang) => searchQidsOnWiki(lang, q)),
   ]);
 
   // Score Q-IDs by search rank & cross-wiki consensus so exact/top matches never get pushed out
@@ -826,7 +929,7 @@ export async function searchLiveFromBrowser(query) {
 
   wdQids.forEach((qid, idx) => addScore(qid, Math.max(4, 24 - idx * 2)));
   wikiQidLists.forEach((list, langIdx) => {
-    const langCode = SUPPORTED_LANGS[langIdx];
+    const langCode = discoveryLangs[langIdx];
     const langBoost = langCode === 'en' || langCode === 'fi' ? 1.3 : 1.0;
     list.forEach((qid, idx) => {
       addScore(qid, Math.round(Math.max(2, 16 - idx * 1.5) * langBoost));
@@ -844,11 +947,13 @@ export async function searchLiveFromBrowser(query) {
     action: 'wbgetentities',
     ids: uniqueQids.join('|'),
     props: 'sitelinks|labels',
-    sitefilter: 'fiwiki|svwiki|ruwiki|enwiki|etwiki|eswiki|zhwiki|plwiki|huwiki',
-    languages: 'en|fi|sv|ru|et|es|zh|pl|hu',
+    languages: 'en|fi|sv|ru|et|es|zh|pl|hu|de|fr',
     format: 'json',
     origin: '*',
   });
+  if (!includeTopLongest) {
+    wdParams.set('sitefilter', activeLangs.map((l) => `${l}wiki`).join('|'));
+  }
 
   const wdData = await fetchJsonFast(`https://www.wikidata.org/w/api.php?${wdParams}`, 4800);
   const entities = wdData?.entities || {};
@@ -858,22 +963,27 @@ export async function searchLiveFromBrowser(query) {
     const ent = entities[qid];
     if (!ent?.sitelinks) continue;
 
-    const titles = {};
-    let count = 0;
+    const allTitles = {};
+    let selectedCount = 0;
+    let totalWikiCount = 0;
     let isDisambig = false;
-    for (const lang of SUPPORTED_LANGS) {
-      const t = ent.sitelinks[`${lang}wiki`]?.title || null;
-      titles[lang] = t;
-      if (t) {
-        count++;
-        if (DISAMBIG_RE.test(t)) isDisambig = true;
-      }
+
+    for (const [siteKey, siteObj] of Object.entries(ent.sitelinks)) {
+      const m = siteKey.match(/^([a-z]{2,3})wiki$/);
+      if (!m || !siteObj?.title) continue;
+      const lang = m[1];
+      if (lang === 'ceb' || lang === 'war' || lang === 'arz') continue;
+      allTitles[lang] = siteObj.title;
+      totalWikiCount++;
+      if (activeLangs.includes(lang)) selectedCount++;
+      if (DISAMBIG_RE.test(siteObj.title)) isDisambig = true;
     }
-    if (count < 2 || isDisambig) continue;
+
+    if ((includeTopLongest ? totalWikiCount : selectedCount) < 2 || isDisambig) continue;
 
     const label =
       ent.labels?.en?.value ||
-      titles.en ||
+      allTitles.en ||
       ent.labels?.fi?.value ||
       ent.labels?.sv?.value ||
       ent.labels?.et?.value ||
@@ -882,26 +992,27 @@ export async function searchLiveFromBrowser(query) {
       ent.labels?.pl?.value ||
       ent.labels?.hu?.value ||
       ent.labels?.ru?.value ||
-      titles.fi ||
-      titles.sv ||
-      titles.et ||
-      titles.es ||
-      titles.zh ||
-      titles.pl ||
-      titles.hu ||
-      titles.ru ||
+      activeLangs.map((l) => allTitles[l]).find(Boolean) ||
+      Object.values(allTitles)[0] ||
       qid;
 
     if (DISAMBIG_RE.test(label)) continue;
 
-    const titleMatchScore = computeQueryTitleMatchScore(q, label, titles);
+    const titleMatchScore = computeQueryTitleMatchScore(q, label, allTitles);
     const isExactMatch =
       label.toLowerCase().trim() === q.toLowerCase() ||
-      Object.values(titles).some((t) => t && t.toLowerCase().trim() === q.toLowerCase());
+      Object.values(allTitles).some((t) => t && t.toLowerCase().trim() === q.toLowerCase());
     const searchRankScore = qidScoreMap.get(qid) || 0;
     const relevanceScore = (isExactMatch ? 500 : 0) + titleMatchScore * 10 + searchRankScore;
 
-    candidates.push({ qid, canonicalLabel: label, titles, relevanceScore, isExactMatch });
+    candidates.push({
+      qid,
+      canonicalLabel: label,
+      titles: allTitles,
+      relevanceScore,
+      isExactMatch,
+      dynamicLangs: [],
+    });
   }
 
   candidates.sort((a, b) => b.relevanceScore - a.relevanceScore);
@@ -909,25 +1020,93 @@ export async function searchLiveFromBrowser(query) {
 
   if (!topCandidates.length) return [];
 
-  const batchMaps = await Promise.all(
-    SUPPORTED_LANGS.map((lang) =>
-      fetchBatchEditions(
-        lang,
-        topCandidates
-          .filter((c) => c.titles[lang])
-          .map((c) => ({ qid: c.qid, title: c.titles[lang] }))
+  // Dynamic Top-5 Longest Wikipedia Editions per article (outside already-selected languages)
+  if (includeTopLongest) {
+    const activeSet = new Set(activeLangs);
+    const extraLangFreq = new Map();
+    for (const cand of topCandidates) {
+      for (const lang of Object.keys(cand.titles)) {
+        if (activeSet.has(lang)) continue;
+        extraLangFreq.set(lang, (extraLangFreq.get(lang) || 0) + 1);
+      }
+    }
+
+    const probeLangs = [...extraLangFreq.keys()]
+      .sort((a, b) => {
+        const pA = MAJOR_WIKI_PRIORITY.indexOf(a);
+        const pB = MAJOR_WIKI_PRIORITY.indexOf(b);
+        const scoreA = (extraLangFreq.get(a) || 0) * 5 + (pA >= 0 ? 40 - pA : 0);
+        const scoreB = (extraLangFreq.get(b) || 0) * 5 + (pB >= 0 ? 40 - pB : 0);
+        return scoreB - scoreA;
+      })
+      .slice(0, 14);
+
+    const lengthMaps = await Promise.all(
+      probeLangs.map((lang) =>
+        fetchBatchLengths(
+          lang,
+          topCandidates
+            .filter((c) => c.titles[lang])
+            .map((c) => ({ qid: c.qid, title: c.titles[lang] }))
+        )
       )
-    )
+    );
+
+    for (const cand of topCandidates) {
+      const scored = [];
+      probeLangs.forEach((lang, idx) => {
+        const len = lengthMaps[idx].get(cand.qid);
+        if (len && len > 0) {
+          scored.push({ lang, len });
+        }
+      });
+      scored.sort((a, b) => b.len - a.len);
+      if (scored.length > 0) {
+        cand.dynamicLangs = scored.slice(0, 5).map((s) => s.lang);
+      } else {
+        // Fallback to major Wikipedias present for this candidate if length probes timed out
+        cand.dynamicLangs = probeLangs
+          .filter((lang) => Boolean(cand.titles[lang]))
+          .slice(0, 5);
+      }
+    }
+  }
+
+  // Build union of (selectedLangs + each candidate's dynamic top-5 longest langs) to fetch in parallel
+  const fetchLangInputs = new Map();
+  for (const cand of topCandidates) {
+    const langsForCand = new Set([
+      ...activeLangs.filter((l) => Boolean(cand.titles[l])),
+      ...cand.dynamicLangs,
+    ]);
+    for (const lang of langsForCand) {
+      if (!fetchLangInputs.has(lang)) fetchLangInputs.set(lang, []);
+      fetchLangInputs.get(lang).push({ qid: cand.qid, title: cand.titles[lang] });
+    }
+  }
+
+  const fetchEntries = [...fetchLangInputs.entries()];
+  const batchMaps = await Promise.all(
+    fetchEntries.map(([lang, items]) => fetchBatchEditions(lang, items))
   );
+
+  const editionsByLang = new Map();
+  fetchEntries.forEach(([lang], idx) => {
+    editionsByLang.set(lang, batchMaps[idx]);
+  });
 
   const articles = [];
   for (const cand of topCandidates) {
     const edMap = new Map();
-    SUPPORTED_LANGS.forEach((lang, idx) => {
-      if (batchMaps[idx].has(cand.qid)) {
-        edMap.set(lang, batchMaps[idx].get(cand.qid));
-      }
-    });
+    const langsForCand = [...new Set([
+      ...activeLangs.filter((l) => Boolean(cand.titles[l])),
+      ...cand.dynamicLangs,
+    ])];
+
+    for (const lang of langsForCand) {
+      const ed = editionsByLang.get(lang)?.get(cand.qid);
+      if (ed) edMap.set(lang, ed);
+    }
     if (edMap.size < 2) continue;
 
     if (!isTopicRelevantToQuery(q, cand.canonicalLabel, edMap)) continue;
@@ -945,13 +1124,13 @@ export async function searchLiveFromBrowser(query) {
     const minRef = Math.min(...refs);
 
     const editionsSummary = {};
-    for (const lang of SUPPORTED_LANGS) {
-      const ed = edMap.get(lang);
+    for (const [lang, ed] of edMap.entries()) {
       editionsSummary[lang] = {
-        title: ed?.title || null,
-        url: ed?.url || null,
-        refCount: ed?.refCount ?? 0,
-        lastRevAt: ed?.lastRevAt || null,
+        title: ed.title || null,
+        url: ed.url || null,
+        refCount: ed.refCount ?? 0,
+        lastRevAt: ed.lastRevAt || null,
+        isDynamicLongest: cand.dynamicLangs.includes(lang),
       };
     }
 

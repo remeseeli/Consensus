@@ -3,23 +3,55 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>WikiBridge</title>
+    <title>Consensus</title>
     <link rel="stylesheet" href="src/sidepanel/styles.css" />
   </head>
   <body>
     <div class="wb-shell">
-      <!-- Minimal Header + Search -->
+      <!-- Minimal Header + Search + Settings Gear -->
       <header class="wb-header">
         <div class="wb-header-top">
-          <h1 class="wb-brand">WikiBridge</h1>
-          <span id="search-timing" class="wb-timing">FI · SV · RU · EN · ET · ES · ZH · PL · HU</span>
+          <h1 class="wb-brand">Consensus</h1>
+          <div class="wb-header-right">
+            <button
+              id="btn-settings"
+              type="button"
+              class="wb-settings-btn"
+              title="Language & search settings"
+              aria-label="Language & search settings"
+              aria-expanded="false"
+            >
+              <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" />
+              </svg>
+            </button>
+          </div>
         </div>
+
+        <!-- Settings Dropdown -->
+        <div id="settings-dropdown" class="wb-settings-dropdown hidden">
+          <div class="wb-settings-section-row">
+            <span class="wb-settings-section-title">Search Languages</span>
+            <div class="wb-settings-actions">
+              <button id="btn-lang-all" type="button" class="wb-link-btn">Select all</button>
+              <span class="wb-settings-sep">&middot;</span>
+              <button id="btn-lang-none" type="button" class="wb-link-btn">Select none</button>
+            </div>
+          </div>
+          <div id="settings-lang-grid" class="wb-lang-grid"></div>
+          <div class="wb-settings-divider"></div>
+          <label class="wb-dynamic-toggle">
+            <input id="chk-dynamic-top5" type="checkbox" checked />
+            <span>Also include 5 longest Wikipedia editions per article</span>
+          </label>
+        </div>
+
         <form id="search-form" class="wb-search-row">
           <input
             id="input-topic-query"
             type="search"
             class="wb-input"
-            placeholder="Search topic (e.g., Winter War, Nokia, Sauna)..."
+            placeholder="Search topic (e.g., Winter War, Stepan Bandera)..."
             autocomplete="off"
           />
           <button id="btn-search" type="submit" class="wb-btn wb-btn-primary">
@@ -36,7 +68,7 @@
         <section id="view-article-list">
           <div id="list-heading" class="wb-section-label">Articles with detected issues</div>
           <div id="loading-list" class="wb-loading hidden">
-            Scanning FI, SV, RU, EN, ET, ES, ZH, PL, and HU Wikipedia in parallel...
+            Scanning Wikipedia editions in parallel...
           </div>
           <div id="articles-container" class="wb-list"></div>
         </section>
