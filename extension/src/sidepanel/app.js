@@ -19,9 +19,21 @@ import {
 
 const STORAGE_LANGS_KEY = 'wikibridge_selected_langs';
 const STORAGE_TOP5_KEY = 'wikibridge_include_top5';
+const STORAGE_SHOW_AI_SUMMARY_KEY = 'consensus_show_ai_summary_v1';
 const STORAGE_SAVED_QUEUE_KEY = 'consensus_saved_queue_v1';
 const STORAGE_DASHBOARD_CACHE_KEY = 'consensus_dashboard_cache_v1';
 const DASHBOARD_CACHE_TTL_MS = 30 * 60 * 1000;
+
+function loadBooleanPref(key, fallback = true) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === 'false') return false;
+    if (raw === 'true') return true;
+  } catch {
+    // Ignore storage errors
+  }
+  return fallback;
+}
 
 function loadSelectedLangs() {
   try {
@@ -36,16 +48,6 @@ function loadSelectedLangs() {
     // Ignore storage errors
   }
   return [...SUPPORTED_LANGS];
-}
-
-function loadIncludeTop5() {
-  try {
-    const raw = localStorage.getItem(STORAGE_TOP5_KEY);
-    if (raw === 'false') return false;
-  } catch {
-    // Ignore
-  }
-  return true;
 }
 
 function loadSavedQueue() {
@@ -125,7 +127,8 @@ const state = {
   currentQuery: '',
   activeTab: 'dashboard', // 'dashboard' | 'saved' | 'search'
   selectedLangs: loadSelectedLangs(),
-  includeTopLongest: loadIncludeTop5(),
+  includeTopLongest: loadBooleanPref(STORAGE_TOP5_KEY, true),
+  showAiSummary: loadBooleanPref(STORAGE_SHOW_AI_SUMMARY_KEY, true),
   savedQueue: loadSavedQueue(),
   articles: [],
   selectedArticle: null,
@@ -148,6 +151,7 @@ const els = {
   btnLangAll: document.getElementById('btn-lang-all'),
   btnLangNone: document.getElementById('btn-lang-none'),
   chkDynamicTop5: document.getElementById('chk-dynamic-top5'),
+  chkShowAiSummary: document.getElementById('chk-show-ai-summary'),
   feedbackBanner: document.getElementById('feedback-banner'),
   viewList: document.getElementById('view-article-list'),
   viewDetail: document.getElementById('view-article-detail'),
@@ -210,6 +214,24 @@ function renderSettingsControls() {
   }
 
   els.chkDynamicTop5.checked = state.includeTopLongest;
+  if (els.chkShowAiSummary) {
+    els.chkShowAiSummary.checked = state.showAiSummary;
+  }
+}
+
+function setShowAiSummary(visible) {
+  state.showAiSummary = Boolean(visible);
+  try {
+    localStorage.setItem(STORAGE_SHOW_AI_SUMMARY_KEY, String(state.showAiSummary));
+  } catch {
+    // Ignore storage errors
+  }
+  if (els.chkShowAiSummary) {
+    els.chkShowAiSummary.checked = state.showAiSummary;
+  }
+  if (!els.viewDetail.classList.contains('hidden') && state.selectedAnalysis) {
+    renderArticleMistakes();
+  }
 }
 
 els.btnLangAll.addEventListener('click', () => {
@@ -235,6 +257,12 @@ els.chkDynamicTop5.addEventListener('change', () => {
   clientAnalysisCache.clear();
   if (state.currentQuery) runSearch();
 });
+
+if (els.chkShowAiSummary) {
+  els.chkShowAiSummary.addEventListener('change', () => {
+    setShowAiSummary(els.chkShowAiSummary.checked);
+  });
+}
 
 els.btnSettings.addEventListener('click', (e) => {
   e.stopPropagation();
@@ -765,7 +793,10 @@ async function runSemanticAnalysisForArticle(article, options = {}) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data?.analyzedWithLlm) {
       if (manual) {
-        state.semanticError = data?.error || `Semantic analysis failed (HTTP ${res.status}).`;
+        state.semanticError =
+          res.status === 404
+            ? 'Semantic endpoint not found on backend (HTTP 404) — redeploy latest backend.'
+            : data?.error || `Semantic analysis failed (HTTP ${res.status}).`;
       }
       return;
     }
@@ -1060,57 +1091,91 @@ function renderArticleMistakes(options = {}) {
   });
 
   detailHeader.appendChild(heading);
-  detailHeader.appendChild(saveDetailBtn);
+
+  const detailActions = document.createElement('div');
+  detailActions.className = 'wb-detail-actions';
+
+  if (!state.showAiSummary) {
+    const showAiBtn = document.createElement('button');
+    showAiBtn.type = 'button';
+    showAiBtn.className = 'wb-link-btn';
+    showAiBtn.textContent = 'Show AI summary';
+    showAiBtn.setAttribute('aria-expanded', 'false');
+    showAiBtn.addEventListener('click', () => {
+      setShowAiSummary(true);
+    });
+    detailActions.appendChild(showAiBtn);
+  }
+
+  detailActions.appendChild(saveDetailBtn);
+  detailHeader.appendChild(detailActions);
   els.detailContainer.appendChild(detailHeader);
 
-  const semanticBar = document.createElement('div');
-  semanticBar.className = 'wb-semantic-bar';
+  if (state.showAiSummary) {
+    const semanticBar = document.createElement('div');
+    semanticBar.className = 'wb-semantic-bar';
 
-  const isSemanticLoading = state.semanticLoadingQid === art.qid;
-  const isLlmActive = Boolean(analysis.analyzedWithLlm);
+    const isSemanticLoading = state.semanticLoadingQid === art.qid;
+    const isLlmActive = Boolean(analysis.analyzedWithLlm);
 
-  const semanticTop = document.createElement('div');
-  semanticTop.className = 'wb-semantic-top';
+    const semanticTop = document.createElement('div');
+    semanticTop.className = 'wb-semantic-top';
 
-  const semanticBadge = document.createElement('span');
-  semanticBadge.className = `wb-semantic-badge${isLlmActive ? ' is-llm' : ''}`;
-  if (isSemanticLoading) {
-    semanticBadge.textContent = 'Analyzing semantically…';
-  } else if (isLlmActive) {
-    semanticBadge.textContent = `Gemini Semantic${analysis.model ? ` · ${analysis.model}` : ''}`;
-  } else {
-    semanticBadge.textContent = 'Heuristic scan';
-  }
-  semanticTop.appendChild(semanticBadge);
+    const semanticBadge = document.createElement('span');
+    semanticBadge.className = `wb-semantic-badge${isLlmActive ? ' is-llm' : ''}`;
+    if (isSemanticLoading) {
+      semanticBadge.textContent = 'Analyzing semantically…';
+    } else if (isLlmActive) {
+      semanticBadge.textContent = `Gemini Semantic${analysis.model ? ` · ${analysis.model}` : ''}`;
+    } else {
+      semanticBadge.textContent = 'Heuristic scan';
+    }
+    semanticTop.appendChild(semanticBadge);
 
-  if (!isSemanticLoading) {
-    const semanticBtn = document.createElement('button');
-    semanticBtn.type = 'button';
-    semanticBtn.className = 'wb-semantic-btn';
-    semanticBtn.textContent = isLlmActive ? 'Re-run AI' : 'Run Semantic AI';
-    semanticBtn.title = isLlmActive
-      ? 'Re-run Gemini semantic cross-lingual analysis'
-      : 'Compare editions semantically using Gemini backend';
-    semanticBtn.addEventListener('click', () => {
-      void runSemanticAnalysisForArticle(art, { forceRefresh: isLlmActive, manual: true });
+    const actionsWrap = document.createElement('div');
+    actionsWrap.className = 'wb-semantic-actions';
+
+    const hideSummaryBtn = document.createElement('button');
+    hideSummaryBtn.type = 'button';
+    hideSummaryBtn.className = 'wb-link-btn';
+    hideSummaryBtn.textContent = 'Hide summary';
+    hideSummaryBtn.setAttribute('aria-expanded', 'true');
+    hideSummaryBtn.addEventListener('click', () => {
+      setShowAiSummary(false);
     });
-    semanticTop.appendChild(semanticBtn);
-  }
-  semanticBar.appendChild(semanticTop);
+    actionsWrap.appendChild(hideSummaryBtn);
 
-  if (isLlmActive && analysis.overallSummary) {
-    const summaryP = document.createElement('p');
-    summaryP.className = 'wb-semantic-summary';
-    summaryP.textContent = analysis.overallSummary;
-    semanticBar.appendChild(summaryP);
-  } else if (state.semanticError) {
-    const errP = document.createElement('p');
-    errP.className = 'wb-semantic-error';
-    errP.textContent = state.semanticError;
-    semanticBar.appendChild(errP);
-  }
+    if (!isSemanticLoading) {
+      const semanticBtn = document.createElement('button');
+      semanticBtn.type = 'button';
+      semanticBtn.className = 'wb-semantic-btn';
+      semanticBtn.textContent = isLlmActive ? 'Re-run AI' : 'Run Semantic AI';
+      semanticBtn.title = isLlmActive
+        ? 'Re-run Gemini semantic cross-lingual analysis'
+        : 'Compare editions semantically using Gemini backend';
+      semanticBtn.addEventListener('click', () => {
+        void runSemanticAnalysisForArticle(art, { forceRefresh: isLlmActive, manual: true });
+      });
+      actionsWrap.appendChild(semanticBtn);
+    }
 
-  els.detailContainer.appendChild(semanticBar);
+    semanticTop.appendChild(actionsWrap);
+    semanticBar.appendChild(semanticTop);
+
+    if (isLlmActive && analysis.overallSummary) {
+      const summaryP = document.createElement('p');
+      summaryP.className = 'wb-semantic-summary';
+      summaryP.textContent = analysis.overallSummary;
+      semanticBar.appendChild(summaryP);
+    } else if (state.semanticError) {
+      const errP = document.createElement('p');
+      errP.className = 'wb-semantic-error';
+      errP.textContent = state.semanticError;
+      semanticBar.appendChild(errP);
+    }
+
+    els.detailContainer.appendChild(semanticBar);
+  }
 
   els.detailContainer.appendChild(renderReferenceStrip(art, discrepancies, cardByLang));
 

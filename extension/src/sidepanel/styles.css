@@ -450,6 +450,13 @@ body {
   gap: 8px;
 }
 
+.wb-semantic-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .wb-semantic-badge {
   display: inline-block;
   padding: 2px 6px;
@@ -991,6 +998,13 @@ body {
   border-bottom: none;
   flex: 1;
   min-width: 0;
+}
+
+.wb-detail-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .wb-btn-bookmark {
