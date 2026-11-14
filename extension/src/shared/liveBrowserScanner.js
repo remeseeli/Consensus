@@ -71,6 +71,30 @@ const EMOTIONAL_WORDS_RE = {
 };
 
 const browserAnalysisCache = new Map();
+const browserEditionsCache = new Map();
+
+function cacheEditionPayloads(qid, edMap) {
+  const payloads = [];
+  for (const [lang, ed] of edMap.entries()) {
+    if (!ed || !ed.title) continue;
+    const text =
+      ed.extract && ed.extract.length >= 250
+        ? ed.extract
+        : ed.extract || ed.bodyPlain || '';
+    payloads.push({
+      lang,
+      langName: getLangDisplayName(lang),
+      title: ed.title,
+      url: ed.url || null,
+      extract: text.slice(0, 2400),
+      refCount: ed.refCount ?? 0,
+      citationNeededTags: ed.citationNeededTags ?? 0,
+      hasNpovTemplate: Boolean(ed.hasNpovTemplate),
+      lastRevAt: ed.lastRevAt || null,
+    });
+  }
+  browserEditionsCache.set(qid, payloads);
+}
 
 function buildWikiUrl(lang, title) {
   return `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`;
@@ -1144,6 +1168,7 @@ export async function searchLiveFromBrowser(query, options = {}) {
       priorityScore: (cand.isExactMatch ? 1000000 : 0) + cand.relevanceScore * 100 + issueBonus,
     };
 
+    cacheEditionPayloads(cand.qid, edMap);
     browserAnalysisCache.set(cand.qid, {
       article: articleSummary,
       overallSummary: scan.overallSummary,
@@ -1159,6 +1184,10 @@ export async function searchLiveFromBrowser(query, options = {}) {
 
 export function getCachedBrowserAnalysis(qid) {
   return browserAnalysisCache.get(qid) || null;
+}
+
+export function getCachedEditionPayloads(qid) {
+  return browserEditionsCache.get(qid) || null;
 }
 
 export function computeSpreadRiskScore(dailyViews, discrepancyCount, maxSeverity) {
@@ -1371,6 +1400,7 @@ export async function fetchHighTrafficRiskDashboard(options = {}) {
       priorityScore: spreadRiskScore,
     };
 
+    cacheEditionPayloads(cand.qid, edMap);
     browserAnalysisCache.set(cand.qid, {
       article: articleSummary,
       overallSummary: scan.overallSummary,

@@ -436,6 +436,67 @@ body {
   color: #202122;
 }
 
+.wb-semantic-bar {
+  border: 1px solid #eaecf0;
+  background-color: #f8f9fa;
+  padding: 7px 9px;
+  margin-bottom: 10px;
+}
+
+.wb-semantic-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wb-semantic-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background-color: #eaecf0;
+  border: 1px solid #c8ccd1;
+  color: #54595d;
+}
+
+.wb-semantic-badge.is-llm {
+  background-color: #eaf3ff;
+  border-color: #3366cc;
+  color: #2a4b8d;
+}
+
+.wb-semantic-btn {
+  background: none;
+  border: 1px solid #a2a9b1;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #3366cc;
+  background-color: #ffffff;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.wb-semantic-btn:hover {
+  background-color: #eef3ff;
+  border-color: #3366cc;
+}
+
+.wb-semantic-summary {
+  margin: 6px 0 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #202122;
+}
+
+.wb-semantic-error {
+  margin: 5px 0 0 0;
+  font-size: 11.5px;
+  color: #b32424;
+}
+
 .wb-ref-card {
   border: 1px solid #a2a9b1;
   background-color: #ffffff;

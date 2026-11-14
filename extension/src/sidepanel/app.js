@@ -9,6 +9,7 @@ import {
   computeSpreadRiskScore,
   fetchHighTrafficRiskDashboard,
   getCachedBrowserAnalysis,
+  getCachedEditionPayloads,
   searchLiveFromBrowser,
 } from '../shared/liveBrowserScanner.js';
 import {
@@ -114,6 +115,7 @@ function persistDashboardCache(articles, analysesMap) {
 // Instant client-side caches so repeat queries and clicking articles take 0ms
 const clientSearchCache = new Map();
 const clientAnalysisCache = new Map();
+const semanticAnalysisCache = new Map();
 
 let backendDownUntil = 0;
 let activeSearchToken = 0;
@@ -128,6 +130,10 @@ const state = {
   articles: [],
   selectedArticle: null,
   selectedAnalysis: null,
+  llmEnabled: false,
+  geminiModel: '',
+  semanticLoadingQid: null,
+  semanticError: null,
 };
 
 const els = {
@@ -250,17 +256,27 @@ document.addEventListener('click', (e) => {
 
 renderSettingsControls();
 
-// Non-blocking startup probe so we never stall on dead localhost TCP timeouts
-(async function probeBackendOnce() {
+// Non-blocking startup probe so we know if the backend + Gemini are online
+async function probeBackendHealth(timeoutMs = 900) {
   try {
-    await fetch(`${state.apiBaseUrl}/health`, {
-      signal: AbortSignal.timeout(700),
+    const res = await fetch(`${state.apiBaseUrl}/health`, {
+      signal: AbortSignal.timeout(timeoutMs),
     });
-    backendDownUntil = 0;
+    if (res.ok || res.status === 503) {
+      const data = await res.json().catch(() => ({}));
+      state.llmEnabled = Boolean(data?.llmEnabled);
+      state.geminiModel = typeof data?.geminiModel === 'string' ? data.geminiModel : '';
+      backendDownUntil = 0;
+      return true;
+    }
   } catch {
     backendDownUntil = Date.now() + 25000;
   }
-})();
+  state.llmEnabled = false;
+  return false;
+}
+
+void probeBackendHealth(900);
 
 function showError(message) {
   els.feedbackBanner.textContent = message;
@@ -664,13 +680,146 @@ function renderArticleList() {
   }
 }
 
+function buildEditionInputsForArticle(article) {
+  const cachedPayloads = getCachedEditionPayloads(article.qid);
+  if (Array.isArray(cachedPayloads) && cachedPayloads.length >= 2) {
+    return cachedPayloads;
+  }
+
+  const out = [];
+  for (const [lang, ed] of Object.entries(article.editions || {})) {
+    if (!ed || !ed.title) continue;
+    out.push({
+      lang,
+      langName: getLangDisplayName(lang),
+      title: ed.title,
+      url: ed.url || null,
+      extract: '',
+      refCount: ed.refCount ?? 0,
+      lastRevAt: ed.lastRevAt || null,
+    });
+  }
+  return out;
+}
+
+async function runSemanticAnalysisForArticle(article, options = {}) {
+  const { forceRefresh = false, manual = false } = options;
+  if (!article?.qid) return;
+
+  if (!forceRefresh && semanticAnalysisCache.has(article.qid)) {
+    const cachedSem = semanticAnalysisCache.get(article.qid);
+    if (state.selectedArticle?.qid === article.qid) {
+      state.selectedAnalysis = cachedSem;
+      renderArticleMistakes(options);
+    }
+    return;
+  }
+
+  if (state.semanticLoadingQid === article.qid) return;
+
+  if (manual || !state.llmEnabled) {
+    const reachable = await probeBackendHealth(1200);
+    if (!reachable || !state.llmEnabled) {
+      if (manual) {
+        state.semanticError = reachable
+          ? 'GEMINI_API_KEY is not configured on backend.'
+          : 'Backend (localhost:4000) is offline.';
+        if (state.selectedArticle?.qid === article.qid) {
+          renderArticleMistakes(options);
+        }
+      }
+      return;
+    }
+  }
+
+  const editions = buildEditionInputsForArticle(article);
+  if (editions.length < 2) {
+    if (manual) {
+      state.semanticError = 'Need at least 2 language editions for semantic comparison.';
+      if (state.selectedArticle?.qid === article.qid) {
+        renderArticleMistakes(options);
+      }
+    }
+    return;
+  }
+
+  state.semanticLoadingQid = article.qid;
+  state.semanticError = null;
+  if (state.selectedArticle?.qid === article.qid) {
+    renderArticleMistakes(options);
+  }
+
+  try {
+    const res = await fetch(`${state.apiBaseUrl}/analyze/semantic`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        qid: article.qid,
+        canonicalLabel: article.canonicalLabel,
+        editions,
+        forceRefresh,
+      }),
+      signal: AbortSignal.timeout(22000),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.analyzedWithLlm) {
+      if (manual) {
+        state.semanticError = data?.error || `Semantic analysis failed (HTTP ${res.status}).`;
+      }
+      return;
+    }
+
+    const updatedArticle = {
+      ...article,
+      discrepancyCount: Array.isArray(data.discrepancies) ? data.discrepancies.length : 0,
+      issueBadges: Array.isArray(data.issueBadges) ? data.issueBadges : article.issueBadges,
+    };
+
+    const semanticAnalysis = {
+      article: updatedArticle,
+      overallSummary: data.overallSummary || '',
+      discrepancies: Array.isArray(data.discrepancies) ? data.discrepancies : [],
+      analyzedWithLlm: true,
+      model: data.model || state.geminiModel,
+    };
+
+    semanticAnalysisCache.set(article.qid, semanticAnalysis);
+    clientAnalysisCache.set(article.qid, semanticAnalysis);
+
+    // Keep list card count/badges in sync when semantic analysis finishes
+    state.articles = state.articles.map((a) =>
+      a.qid === article.qid ? { ...a, ...updatedArticle } : a
+    );
+
+    if (state.selectedArticle?.qid === article.qid) {
+      state.selectedArticle = updatedArticle;
+      state.selectedAnalysis = semanticAnalysis;
+    }
+  } catch (err) {
+    if (manual) {
+      state.semanticError =
+        err instanceof Error ? err.message : 'Could not reach semantic backend.';
+    }
+  } finally {
+    if (state.semanticLoadingQid === article.qid) {
+      state.semanticLoadingQid = null;
+    }
+    if (state.selectedArticle?.qid === article.qid) {
+      renderArticleMistakes(options);
+    }
+  }
+}
+
 async function openArticleMistakes(article, options = {}) {
   state.selectedArticle = article;
+  state.semanticError = null;
   els.viewList.classList.add('hidden');
   els.viewDetail.classList.remove('hidden');
 
   const savedEntry = state.savedQueue[article.qid];
   const cached =
+    semanticAnalysisCache.get(article.qid) ||
     clientAnalysisCache.get(article.qid) ||
     getCachedBrowserAnalysis(article.qid) ||
     savedEntry?.analysis ||
@@ -681,6 +830,9 @@ async function openArticleMistakes(article, options = {}) {
     state.selectedAnalysis = cached;
     els.loadingDetail.classList.add('hidden');
     renderArticleMistakes(options);
+    if (!cached.analyzedWithLlm && state.llmEnabled) {
+      void runSemanticAnalysisForArticle(article, { forceRefresh: false, manual: false });
+    }
     return;
   }
 
@@ -719,6 +871,9 @@ async function openArticleMistakes(article, options = {}) {
   } finally {
     els.loadingDetail.classList.add('hidden');
     renderArticleMistakes(options);
+    if (!state.selectedAnalysis?.analyzedWithLlm && state.llmEnabled) {
+      void runSemanticAnalysisForArticle(article, { forceRefresh: false, manual: false });
+    }
   }
 }
 
@@ -908,6 +1063,55 @@ function renderArticleMistakes(options = {}) {
   detailHeader.appendChild(saveDetailBtn);
   els.detailContainer.appendChild(detailHeader);
 
+  const semanticBar = document.createElement('div');
+  semanticBar.className = 'wb-semantic-bar';
+
+  const isSemanticLoading = state.semanticLoadingQid === art.qid;
+  const isLlmActive = Boolean(analysis.analyzedWithLlm);
+
+  const semanticTop = document.createElement('div');
+  semanticTop.className = 'wb-semantic-top';
+
+  const semanticBadge = document.createElement('span');
+  semanticBadge.className = `wb-semantic-badge${isLlmActive ? ' is-llm' : ''}`;
+  if (isSemanticLoading) {
+    semanticBadge.textContent = 'Analyzing semantically…';
+  } else if (isLlmActive) {
+    semanticBadge.textContent = `Gemini Semantic${analysis.model ? ` · ${analysis.model}` : ''}`;
+  } else {
+    semanticBadge.textContent = 'Heuristic scan';
+  }
+  semanticTop.appendChild(semanticBadge);
+
+  if (!isSemanticLoading) {
+    const semanticBtn = document.createElement('button');
+    semanticBtn.type = 'button';
+    semanticBtn.className = 'wb-semantic-btn';
+    semanticBtn.textContent = isLlmActive ? 'Re-run AI' : 'Run Semantic AI';
+    semanticBtn.title = isLlmActive
+      ? 'Re-run Gemini semantic cross-lingual analysis'
+      : 'Compare editions semantically using Gemini backend';
+    semanticBtn.addEventListener('click', () => {
+      void runSemanticAnalysisForArticle(art, { forceRefresh: isLlmActive, manual: true });
+    });
+    semanticTop.appendChild(semanticBtn);
+  }
+  semanticBar.appendChild(semanticTop);
+
+  if (isLlmActive && analysis.overallSummary) {
+    const summaryP = document.createElement('p');
+    summaryP.className = 'wb-semantic-summary';
+    summaryP.textContent = analysis.overallSummary;
+    semanticBar.appendChild(summaryP);
+  } else if (state.semanticError) {
+    const errP = document.createElement('p');
+    errP.className = 'wb-semantic-error';
+    errP.textContent = state.semanticError;
+    semanticBar.appendChild(errP);
+  }
+
+  els.detailContainer.appendChild(semanticBar);
+
   els.detailContainer.appendChild(renderReferenceStrip(art, discrepancies, cardByLang));
 
   if (discrepancies.length === 0) {
@@ -1043,20 +1247,25 @@ function renderArticleMistakes(options = {}) {
       if (disc.targetLang && disc.targetLang !== 'en') {
         const transLine = document.createElement('div');
         transLine.className = 'wb-snippet-translation';
-        const instant = lookupOfflineTermTranslation(highlightOrSnippet);
-        transLine.textContent = instant
-          ? `English translation: "${instant}"`
-          : 'English translation: translating...';
-        quote.appendChild(transLine);
+        if (disc.snippetEnglishTranslation) {
+          transLine.textContent = `English translation: "${disc.snippetEnglishTranslation}"`;
+          quote.appendChild(transLine);
+        } else {
+          const instant = lookupOfflineTermTranslation(highlightOrSnippet);
+          transLine.textContent = instant
+            ? `English translation: "${instant}"`
+            : 'English translation: translating...';
+          quote.appendChild(transLine);
 
-        translateToEnglish(highlightOrSnippet, disc.targetLang).then((translated) => {
-          if (!transLine.isConnected) return;
-          if (translated) {
-            transLine.textContent = `English translation: "${translated}"`;
-          } else if (!instant) {
-            transLine.remove();
-          }
-        });
+          translateToEnglish(highlightOrSnippet, disc.targetLang).then((translated) => {
+            if (!transLine.isConnected) return;
+            if (translated) {
+              transLine.textContent = `English translation: "${translated}"`;
+            } else if (!instant) {
+              transLine.remove();
+            }
+          });
+        }
       }
 
       body.appendChild(quote);
