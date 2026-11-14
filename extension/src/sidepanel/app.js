@@ -1221,6 +1221,11 @@ function buildSemanticBar(art, analysis) {
     summaryP.className = 'wb-semantic-summary';
     summaryP.textContent = analysis.overallSummary;
     semanticBar.appendChild(summaryP);
+
+    const noteP = document.createElement('p');
+    noteP.className = 'wb-semantic-note';
+    noteP.textContent = 'Quick AI summary only — may contain mistakes.';
+    semanticBar.appendChild(noteP);
   } else if (state.semanticError) {
     const errP = document.createElement('p');
     errP.className = 'wb-semantic-error';
