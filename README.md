@@ -1,5 +1,5 @@
 > [!NOTE]
-> **For Reviewers:** To install the browser extension directly, download and extract [`DEMO.zip`](DEMO.zip), then open `chrome://extensions`, enable **Developer mode**, and click **Load unpacked** on the extracted folder.
+> **For Reviewers:** To install the browser extension directly, download and extract [`EXTENSION-DEMO.zip`](DEMO.zip), then open `chrome://extensions`, enable **Developer mode**, and click **Load unpacked** on the extracted folder.
 
 # Consensus — Cross-Lingual Wikipedia Fact-Checking & Discrepancy Workbench
 
