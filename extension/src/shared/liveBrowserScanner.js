@@ -18,24 +18,30 @@ const CITATION_NEEDED_RE = {
   en: /\{\{\s*(?:citation needed|cn|fact|unreferenced|who|when|where)\b[^}]*\}\}/gi,
   et: /\{\{\s*(?:lisa viide|viide\?|allikas\?|viidet pole|täpsusta)\b[^}]*\}\}/gi,
   es: /\{\{\s*(?:cita requerida|cr|referencias|quién|cuándo|dónde)\b[^}]*\}\}/gi,
+  zh: /\{\{\s*(?:citation needed|cn|fact|来源请求|需要来源|无来源|who|when)\b[^}]*\}\}/gi,
+  pl: /\{\{\s*(?:fakt|potrzebne źródło|citation needed|cn|kto|kiedy|gdzie)\b[^}]*\}\}/gi,
 };
 
 const NPOV_TEMPLATE_RE = {
-  fi: /\{\{\s*(?:neutraalius|pov|puolueellisuus|yksipuolinen|kansanvalta)\b[^}]*\}\}/i,
-  sv: /\{\{\s*(?:pov|neutralitet|synvinkel|partisk|värdeord)\b[^}]*\}\}/i,
-  ru: /\{\{\s*(?:нтз|нейтральность|ненейтральность|проверить нейтральность|реклама)\b[^}]*\}\}/i,
-  en: /\{\{\s*(?:pov|neutrality|pov-section|pov statement|peacock|weasel|tone|advert)\b[^}]*\}\}/i,
+  fi: /\{\{\s*(?:neutraalius|pov|puolueellisuus|yksipuolinen|kansanvalta|näkökulma)\b[^}]*\}\}/i,
+  sv: /\{\{\s*(?:pov|neutralitet|synvinkel|partisk|värdeord|icke-neutral)\b[^}]*\}\}/i,
+  ru: /\{\{\s*(?:нтз|нейтральность|ненейтральность|проверить нейтральность|реклама|взвешенность|неавторитетные источники)\b[^}]*\}\}/i,
+  en: /\{\{\s*(?:pov|neutrality|pov-section|pov statement|peacock|weasel|tone|advert|unbalanced)\b[^}]*\}\}/i,
   et: /\{\{\s*(?:neutraalsus|pov|vaidlustatud|erapoolik)\b[^}]*\}\}/i,
-  es: /\{\{\s*(?:no neutral|pvn|discutido|publicidad|tono)\b[^}]*\}\}/i,
+  es: /\{\{\s*(?:no neutral|pvn|discutido|publicidad|tono|desacuerdo de neutralidad)\b[^}]*\}\}/i,
+  zh: /\{\{\s*(?:pov|neutrality|中立性|不中立|非中立|advert|tone)\b[^}]*\}\}/i,
+  pl: /\{\{\s*(?:pov|neutralność|niejasne|kontrowersyjny|reklama|styl)\b[^}]*\}\}/i,
 };
 
 const EMOTIONAL_WORDS_RE = {
-  en: /\b(catastrophic|disastrous|atrocious|barbaric|brutal|heroic|glorious|legendary|triumphant|devastating|horrific|evil|corrupt|infamous|notorious|shameful|scandalous|unforgivable|genius|masterpiece|undoubtedly|obviously|everyone knows|miraculous|treacherous|tyrannical|bloody|propaganda|pathetic|ridiculous)\b/gi,
-  fi: /\b(katastrofaali\w*|julma\w*|barbaari\w*|sankarilli\w*|loistava\w*|neroka\w*|hirvittävä\w*|häpeälli\w*|skandaali\w*|korruptoitun\w*|järkyttävä\w*|tuhoisa\w*|pahamainei\w*|epäilemättä|luonnollisesti|ihmeelli\w*|hirmuhallinto\w*|petokselli\w*|verinen|propaganda\w*)\b/gi,
-  sv: /\b(katastrofal\w*|barbarisk\w*|brutal\w*|hjältemodig\w*|ärorik\w*|fruktansvärd\w*|skandalös\w*|korrupt\w*|ökänd\w*|skamlig\w*|mästerverk|geni\w*|otvivelaktigt|självklart|tyrannisk\w*|förrädisk\w*|blodig\w*|propaganda\w*)\b/gi,
-  ru: /\b(катастрофическ\w*|варварск\w*|жесток\w*|героическ\w*|славн\w*|чудовищн\w*|позорн\w*|скандальн\w*|коррумпирован\w*|злодейск\w*|гениальн\w*|шедевр\w*|бесспорно|очевидно|тираническ\w*|кровав\w*|вероломн\w*|пропаганд\w*)\b/gi,
-  et: /\b(katastroofili\w*|barbaar\w*|julm\w*|kangelaslik\w*|hiilgav\w*|kohutav\w*|häbiväär\w*|skandaal\w*|korrumpeerun\w*|kuritegelik\w*|geniaal\w*|meistriteos\w*|kahtlemata|türannia\w*|verine\w*|reeturlik\w*|propaganda\w*)\b/gi,
-  es: /\b(catastrófic\w*|bárbar\w*|brutal\w*|heroic\w*|glorios\w*|horrible\w*|vergonzos\w*|escandalos\w*|corrupt\w*|infame\w*|notori\w*|genial\w*|obra maestra|indudablemente|obviamente|tiránic\w*|sangrient\w*|traicioner\w*|propaganda)\b/gi,
+  en: /\b(catastrophic|disastrous|atrocious|atrocities|barbaric|brutal|heroic|glorious|glorification|legendary|triumphant|devastating|horrific|evil|corrupt|infamous|notorious|shameful|scandalous|unforgivable|genius|masterpiece|undoubtedly|obviously|miraculous|treacherous|tyrannical|bloody|propaganda|pathetic|ridiculous|ruthless|heinous|terrorist\w*|war criminal\w*|extremist\w*|fanatic\w*|traitor\w*|murderer\w*|massacre\w*|puppet regime)\b/gi,
+  fi: /\b(katastrofaali\w*|julma\w*|barbaari\w*|sankarilli\w*|loistava\w*|neroka\w*|hirvittävä\w*|häpeälli\w*|skandaali\w*|korruptoitun\w*|järkyttävä\w*|tuhoisa\w*|pahamainei\w*|epäilemättä|luonnollisesti|ihmeelli\w*|hirmuhallinto\w*|petokselli\w*|verinen|propaganda\w*|terroristi\w*|sotarikolli\w*|ääri\w*|fanaatik\w*|petturi\w*|murhaaja\w*|joukkomurha\w*|julmuuks\w*)\b/gi,
+  sv: /\b(katastrofal\w*|barbarisk\w*|brutal\w*|hjältemodig\w*|ärorik\w*|fruktansvärd\w*|skandalös\w*|korrupt\w*|ökänd\w*|skamlig\w*|mästerverk|geni\w*|otvivelaktigt|självklart|tyrannisk\w*|förrädisk\w*|blodig\w*|propaganda\w*|terrorist\w*|krigsförbryt\w*|extremist\w*|fanatiker\w*|förrädare\w*|mördare\w*|massaker\w*|grymhet\w*)\b/gi,
+  ru: /(?:^|[^\p{L}])(катастрофическ\p{L}*|варварск\p{L}*|жесток\p{L}*|героическ\p{L}*|героизаци\p{L}*|славн\p{L}*|чудовищн\p{L}*|бесчеловечн\p{L}*|позорн\p{L}*|скандальн\p{L}*|коррумпирован\p{L}*|злодейск\p{L}*|злодеяни\p{L}*|зверств\p{L}*|гениальн\p{L}*|шедевр\p{L}*|бесспорно|очевидно|тираническ\p{L}*|кровав\p{L}*|вероломн\p{L}*|пропаганд\p{L}*|террорист\p{L}*|террор\p{L}*|каратель\p{L}*|карательн\p{L}*|пособник\p{L}*|преступн\p{L}*|преступник\p{L}*|предател\p{L}*|палач\p{L}*|убийц\p{L}*|резн\p{L}*|расправ\p{L}*|марионеточн\p{L}*|экстремист\p{L}*|фанатик\p{L}*|фашистск\p{L}*|нацистск\p{L}*|неонацист\p{L}*|русофоб\p{L}*|ультранационалист\p{L}*|оккупант\p{L}*|агрессор\p{L}*)/giu,
+  et: /\b(katastroofili\w*|barbaar\w*|julm\w*|kangelaslik\w*|hiilgav\w*|kohutav\w*|häbiväär\w*|skandaal\w*|korrumpeerun\w*|kuritegelik\w*|geniaal\w*|meistriteos\w*|kahtlemata|türannia\w*|verine\w*|reeturlik\w*|propaganda\w*|terrorist\w*|sõjakurjategi\w*|äärmus\w*|fanaatik\w*|reetur\w*|mõrvar\w*|veresaun\w*)\b/gi,
+  es: /\b(catastrófic\w*|bárbar\w*|brutal\w*|heroic\w*|glorios\w*|horrible\w*|vergonzos\w*|escandalos\w*|corrupt\w*|infame\w*|notori\w*|genial\w*|obra maestra|indudablemente|obviamente|tiránic\w*|sangrient\w*|traicioner\w*|propaganda\w*|terrorista\w*|criminal\w* de guerra|extremista\w*|fanátic\w*|masacre\w*|atrocidad\w*)\b/gi,
+  zh: /(?:灾难性|残暴|野蛮|英雄般|辉煌|可耻|丑闻|腐败|臭名昭著|毫无疑问|显而易见|暴政|血腥|宣传|天才|杰作|令人震惊|极度|恐怖分子|战犯|极端主义|狂热|大屠杀|暴行|傀儡政权|叛徒)/g,
+  pl: /(?:^|[^\p{L}])(katastrofaln\p{L}*|barbarzyń\p{L}*|brutaln\p{L}*|bohatersk\p{L}*|haniebn\p{L}*|skandaliczn\p{L}*|skorumpowan\p{L}*|zbrodnicz\p{L}*|zbrodni\p{L}*|okrutn\p{L}*|okrucieństw\p{L}*|ludobójstw\p{L}*|rzeź\p{L}*|rzezi\p{L}*|terroryst\p{L}*|kolaborant\p{L}*|zdrajc\p{L}*|morderc\p{L}*|propagand\p{L}*|ekstremist\p{L}*|fanatyk\p{L}*|krwaw\p{L}*|tyran\p{L}*|nazistowsk\p{L}*|faszystowsk\p{L}*|arcydzieł\p{L}*|genialn\p{L}*|niewątpliwie|oczywiście)/giu,
 };
 
 const browserAnalysisCache = new Map();
@@ -57,7 +63,8 @@ async function searchQidsOnWiki(wikiHost, query) {
     action: 'query',
     generator: 'search',
     gsrsearch: query,
-    gsrlimit: '8',
+    gsrnamespace: '0',
+    gsrlimit: '10',
     prop: 'pageprops',
     ppprop: 'wikibase_item',
     format: 'json',
@@ -71,6 +78,57 @@ async function searchQidsOnWiki(wikiHost, query) {
   } catch {
     return [];
   }
+}
+
+async function searchWikidataEntities(query) {
+  const params = new URLSearchParams({
+    action: 'wbsearchentities',
+    search: query,
+    language: 'en',
+    uselang: 'en',
+    type: 'item',
+    limit: '10',
+    format: 'json',
+    origin: '*',
+  });
+  try {
+    const data = await fetchJsonFast(`https://www.wikidata.org/w/api.php?${params}`, 4000);
+    return (data?.search || [])
+      .map((item) => item?.id)
+      .filter((id) => Boolean(id && /^Q\d+$/.test(id)));
+  } catch {
+    return [];
+  }
+}
+
+const DISAMBIG_RE = /\((?:disambiguation|täsmennyssivu|olika betydelser|значения|täpsustus|desambiguación|消歧义|ujednoznacznienie)\)/i;
+
+function computeQueryTitleMatchScore(query, canonicalLabel, titlesObj) {
+  const q = query.trim().toLowerCase();
+  if (!q) return 0;
+  const qTokens = q.split(/\s+/).filter((t) => t.length >= 2);
+  const candidates = [canonicalLabel, ...Object.values(titlesObj || {})]
+    .filter(Boolean)
+    .map((s) => s.toLowerCase().trim());
+
+  let best = 0;
+  for (const text of candidates) {
+    if (text === q) {
+      best = Math.max(best, 120);
+    } else if (text.startsWith(q)) {
+      best = Math.max(best, 85);
+    } else if (text.includes(q)) {
+      best = Math.max(best, 65);
+    } else if (qTokens.length > 0) {
+      const matched = qTokens.filter((tok) => text.includes(tok)).length;
+      if (matched === qTokens.length) {
+        best = Math.max(best, 55);
+      } else if (matched > 0) {
+        best = Math.max(best, Math.round((matched / qTokens.length) * 35));
+      }
+    }
+  }
+  return best;
 }
 
 function countInlineRefs(wikitext) {
@@ -98,6 +156,21 @@ function extractCitationNeededSnippet(wikitext, lang) {
   const parts = cleaned.split(/(?<=[.!?])\s+/);
   const last = (parts[parts.length - 1] || cleaned).trim();
   return last.length >= 15 ? last : null;
+}
+
+function stripWikitextToPlain(wikitext) {
+  return (wikitext || '')
+    .replace(/<ref\b[^>]*>[\s\S]*?<\/ref>/gi, ' ')
+    .replace(/<ref\b[^>]*\/\s*>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/\{\{[^{}]*\}\}/g, ' ')
+    .replace(/\[\[(?:File|Image|Файл|Tiedosto|Fil|Fail|Archivo|文件):[^\]]+\]\]/gi, ' ')
+    .replace(/\[\[(?:[^|\]]*\|)?([^\]]+)\]\]/g, '$1')
+    .replace(/'''?/g, '')
+    .replace(/^=+\s*.*?\s*=+$/gm, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 async function fetchBatchEditions(lang, items) {
@@ -146,8 +219,9 @@ async function fetchBatchEditions(lang, items) {
       const cnRe = CITATION_NEEDED_RE[lang];
       const cnMatches = cnRe ? wikitext.match(cnRe) || [] : [];
       const hasNpovTemplate = NPOV_TEMPLATE_RE[lang]
-        ? NPOV_TEMPLATE_RE[lang].test(wikitext.slice(0, 4000))
+        ? NPOV_TEMPLATE_RE[lang].test(wikitext)
         : false;
+      const bodyPlain = stripWikitextToPlain(wikitext.slice(0, 18000));
 
       out.set(qid, {
         qid,
@@ -155,6 +229,7 @@ async function fetchBatchEditions(lang, items) {
         title: page.title,
         url: buildWikiUrl(lang, page.title),
         extract: (page.extract || '').trim(),
+        bodyPlain,
         refCount: countInlineRefs(wikitext),
         citationNeededTags: cnMatches.length,
         cnSnippet: extractCitationNeededSnippet(wikitext, lang),
@@ -171,9 +246,9 @@ async function fetchBatchEditions(lang, items) {
 function splitSentences(text) {
   return (text || '')
     .replace(/\s+/g, ' ')
-    .split(/(?<=[.!?])\s+/)
+    .split(/(?<=[.!?。！？])\s*/)
     .map((s) => s.trim())
-    .filter((s) => s.length >= 16);
+    .filter((s) => s.length >= 10);
 }
 
 function firstSentence(text, fallbackTitle) {
@@ -204,34 +279,69 @@ function extractYearsAndFigures(text) {
   return { years, figures, sents };
 }
 
-function detectEmotionalNeutralityIssue(ed) {
-  const sents = splitSentences(ed.extract);
+function scoreEmotionalNeutrality(ed) {
+  const leadSents = splitSentences(ed.extract);
+  const bodySents = splitSentences(ed.bodyPlain || ed.extract);
+  const allSents = leadSents.length > 0 ? [...leadSents, ...bodySents.slice(0, 45)] : bodySents.slice(0, 45);
+
   const wordRe = EMOTIONAL_WORDS_RE[ed.lang];
   let bestSentence = null;
   let bestWords = [];
+  let bestScore = 0;
   let totalHits = 0;
+  const allTerms = new Set();
 
-  for (const s of sents.slice(0, 10)) {
-    const matches = wordRe ? s.match(new RegExp(wordRe.source, 'gi')) || [] : [];
+  for (const s of allSents) {
+    if (!wordRe) continue;
+    const re = new RegExp(wordRe.source, wordRe.flags);
+    const rawMatches = [...s.matchAll(re)].map((m) => (m[1] || m[0] || '').trim()).filter(Boolean);
     const hasExclamation = /!(?:\s|$)/.test(s);
-    const score = matches.length + (hasExclamation ? 1 : 0);
-    totalHits += matches.length;
-    if (score > bestWords.length) {
-      bestWords = [...new Set(matches.map((m) => m.trim()))];
+    const score = rawMatches.length + (hasExclamation ? 1 : 0);
+    totalHits += rawMatches.length;
+    for (const w of rawMatches) allTerms.add(w.toLowerCase());
+    if (score > bestScore) {
+      bestScore = score;
+      bestWords = [...new Set(rawMatches)];
       bestSentence = s;
     }
   }
 
-  if (ed.hasNpovTemplate || totalHits >= 2 || bestWords.length >= 2) {
+  return {
+    hasNpovTemplate: ed.hasNpovTemplate,
+    totalHits,
+    uniqueTermsCount: allTerms.size,
+    emotionalTerms: bestWords.length ? bestWords : [...allTerms].slice(0, 4),
+    sentence: bestSentence || firstSentence(ed.extract, ed.title),
+    highlightPhrase: bestWords[0] || [...allTerms][0] || null,
+  };
+}
+
+function detectEmotionalNeutralityIssue(ed, allEditionScores = []) {
+  const own = scoreEmotionalNeutrality(ed);
+  const otherScores = allEditionScores
+    .filter((x) => x.lang !== ed.lang)
+    .map((x) => x.totalHits);
+  const avgOtherHits =
+    otherScores.length > 0
+      ? otherScores.reduce((a, b) => a + b, 0) / otherScores.length
+      : 0;
+
+  const isSignificantlyMoreEmotional =
+    own.totalHits >= 4 && own.totalHits >= Math.max(avgOtherHits * 2, avgOtherHits + 3);
+
+  if (
+    own.hasNpovTemplate ||
+    own.uniqueTermsCount >= 3 ||
+    own.emotionalTerms.length >= 2 ||
+    isSignificantlyMoreEmotional
+  ) {
     return {
       hasIssue: true,
-      hasNpovTemplate: ed.hasNpovTemplate,
-      emotionalTerms: bestWords,
-      sentence: bestSentence || firstSentence(ed.extract, ed.title),
-      highlightPhrase: bestWords[0] || null,
+      ...own,
+      isSignificantlyMoreEmotional,
     };
   }
-  return { hasIssue: false };
+  return { hasIssue: false, ...own };
 }
 
 function buildClaimsMatrix(editionsMap, mapper) {
@@ -399,20 +509,25 @@ function scanEditionsForIssues(qid, canonicalLabel, editionsMap) {
   }
 
   // 2. NOT NEUTRAL (EMOTIONAL TONE / NPOV)
+  const povScores = langs.map((l) => ({
+    lang: l,
+    ...scoreEmotionalNeutrality(editionsMap.get(l)),
+  }));
+
   for (const l of langs) {
     const ed = editionsMap.get(l);
-    const pov = detectEmotionalNeutralityIssue(ed);
+    const pov = detectEmotionalNeutralityIssue(ed, povScores);
     if (pov.hasIssue) {
       const reasonText = pov.hasNpovTemplate
-        ? `Wikipedia editors flagged this ${LANG_NAMES[l]} article with a Neutrality / POV warning template${pov.emotionalTerms.length ? ` and emotional wording (${pov.emotionalTerms.join(', ')})` : ''}.`
-        : `${LANG_NAMES[l]} Wikipedia uses highly emotional or non-neutral wording (${pov.emotionalTerms.join(', ')}).`;
+        ? `Wikipedia editors flagged this ${LANG_NAMES[l]} article with a Neutrality / POV warning template${pov.emotionalTerms.length ? ` and loaded wording (${pov.emotionalTerms.slice(0, 4).join(', ')})` : ''}.`
+        : `${LANG_NAMES[l]} Wikipedia uses emotionally loaded or non-neutral wording (${pov.totalHits} loaded occurrences, e.g. "${pov.emotionalTerms.slice(0, 4).join('", "')}").`;
 
       const claims = buildClaimsMatrix(editionsMap, (code, otherEd) => {
-        const otherPov = detectEmotionalNeutralityIssue(otherEd);
+        const otherPov = detectEmotionalNeutralityIssue(otherEd, povScores);
         return {
           value: otherPov.hasIssue
-            ? `Non-neutral / emotional wording${otherPov.emotionalTerms?.length ? `: "${otherPov.emotionalTerms.join(', ')}"` : ' (POV tag)'}`
-            : `Neutral encyclopedic tone (${otherEd.refCount} refs)`,
+            ? `Loaded / emotional tone (${otherPov.totalHits} hits${otherPov.emotionalTerms?.length ? `: "${otherPov.emotionalTerms.slice(0, 3).join(', ')}"` : ''})`
+            : `Neutral tone (${otherPov.totalHits} loaded terms, ${otherEd.refCount} refs)`,
           hasCitation: !otherPov.hasIssue,
           citationStatus: otherPov.hasIssue ? 'missing' : 'valid',
         };
@@ -445,7 +560,6 @@ function scanEditionsForIssues(qid, canonicalLabel, editionsMap) {
         verifiedSources: [],
       });
       issueBadges.push(`Not neutral (${l.toUpperCase()})`);
-      break;
     }
   }
 
@@ -609,23 +723,31 @@ export async function searchLiveFromBrowser(query) {
   const q = query.trim();
   if (!q) return null;
 
-  const qidLists = await Promise.all(
-    SUPPORTED_LANGS.map((lang) => searchQidsOnWiki(lang, q))
-  );
+  const [wdQids, ...wikiQidLists] = await Promise.all([
+    searchWikidataEntities(q),
+    ...SUPPORTED_LANGS.map((lang) => searchQidsOnWiki(lang, q)),
+  ]);
 
-  const uniqueQids = [];
-  const seen = new Set();
-  const maxLen = Math.max(...qidLists.map((l) => l.length));
-  for (let i = 0; i < maxLen && uniqueQids.length < 15; i++) {
-    for (const arr of qidLists) {
-      const id = arr[i];
-      if (id && !seen.has(id)) {
-        seen.add(id);
-        uniqueQids.push(id);
-        if (uniqueQids.length >= 15) break;
-      }
-    }
-  }
+  // Score Q-IDs by search rank & cross-wiki consensus so exact/top matches never get pushed out
+  const qidScoreMap = new Map();
+  const addScore = (qid, pts) => {
+    if (!qid) return;
+    qidScoreMap.set(qid, (qidScoreMap.get(qid) || 0) + pts);
+  };
+
+  wdQids.forEach((qid, idx) => addScore(qid, Math.max(4, 24 - idx * 2)));
+  wikiQidLists.forEach((list, langIdx) => {
+    const langCode = SUPPORTED_LANGS[langIdx];
+    const langBoost = langCode === 'en' || langCode === 'fi' ? 1.3 : 1.0;
+    list.forEach((qid, idx) => {
+      addScore(qid, Math.round(Math.max(2, 16 - idx * 1.5) * langBoost));
+    });
+  });
+
+  const uniqueQids = [...qidScoreMap.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 25)
+    .map(([qid]) => qid);
 
   if (!uniqueQids.length) return [];
 
@@ -633,8 +755,8 @@ export async function searchLiveFromBrowser(query) {
     action: 'wbgetentities',
     ids: uniqueQids.join('|'),
     props: 'sitelinks|labels',
-    sitefilter: 'fiwiki|svwiki|ruwiki|enwiki|etwiki|eswiki',
-    languages: 'en|fi|sv|ru|et|es',
+    sitefilter: 'fiwiki|svwiki|ruwiki|enwiki|etwiki|eswiki|zhwiki|plwiki',
+    languages: 'en|fi|sv|ru|et|es|zh|pl',
     format: 'json',
     origin: '*',
   });
@@ -649,12 +771,16 @@ export async function searchLiveFromBrowser(query) {
 
     const titles = {};
     let count = 0;
+    let isDisambig = false;
     for (const lang of SUPPORTED_LANGS) {
       const t = ent.sitelinks[`${lang}wiki`]?.title || null;
       titles[lang] = t;
-      if (t) count++;
+      if (t) {
+        count++;
+        if (DISAMBIG_RE.test(t)) isDisambig = true;
+      }
     }
-    if (count < 2) continue;
+    if (count < 2 || isDisambig) continue;
 
     const label =
       ent.labels?.en?.value ||
@@ -663,30 +789,45 @@ export async function searchLiveFromBrowser(query) {
       ent.labels?.sv?.value ||
       ent.labels?.et?.value ||
       ent.labels?.es?.value ||
+      ent.labels?.zh?.value ||
+      ent.labels?.pl?.value ||
       ent.labels?.ru?.value ||
       titles.fi ||
       titles.sv ||
       titles.et ||
       titles.es ||
+      titles.zh ||
+      titles.pl ||
       titles.ru ||
       qid;
 
-    candidates.push({ qid, canonicalLabel: label, titles });
+    if (DISAMBIG_RE.test(label)) continue;
+
+    const titleMatchScore = computeQueryTitleMatchScore(q, label, titles);
+    const searchRankScore = qidScoreMap.get(qid) || 0;
+    const relevanceScore = titleMatchScore * 2 + searchRankScore;
+
+    candidates.push({ qid, canonicalLabel: label, titles, relevanceScore });
   }
 
-  if (!candidates.length) return [];
+  candidates.sort((a, b) => b.relevanceScore - a.relevanceScore);
+  const topCandidates = candidates.slice(0, 15);
+
+  if (!topCandidates.length) return [];
 
   const batchMaps = await Promise.all(
     SUPPORTED_LANGS.map((lang) =>
       fetchBatchEditions(
         lang,
-        candidates.filter((c) => c.titles[lang]).map((c) => ({ qid: c.qid, title: c.titles[lang] }))
+        topCandidates
+          .filter((c) => c.titles[lang])
+          .map((c) => ({ qid: c.qid, title: c.titles[lang] }))
       )
     )
   );
 
   const articles = [];
-  for (const cand of candidates) {
+  for (const cand of topCandidates) {
     const edMap = new Map();
     SUPPORTED_LANGS.forEach((lang, idx) => {
       if (batchMaps[idx].has(cand.qid)) {
@@ -713,6 +854,7 @@ export async function searchLiveFromBrowser(query) {
       };
     }
 
+    const issueBonus = Math.min(35, Math.round((maxSev + Math.max(0, 20 - minRef)) * 0.3));
     const articleSummary = {
       qid: cand.qid,
       canonicalLabel: cand.canonicalLabel,
@@ -722,7 +864,7 @@ export async function searchLiveFromBrowser(query) {
       discrepancyCount: scan.discrepancies.length,
       discrepancySeverity: maxSev,
       issueBadges: scan.issueBadges,
-      priorityScore: maxSev + Math.max(0, 20 - minRef),
+      priorityScore: cand.relevanceScore * 10 + issueBonus,
     };
 
     browserAnalysisCache.set(cand.qid, {

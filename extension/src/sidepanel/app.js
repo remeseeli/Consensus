@@ -152,14 +152,14 @@ async function runSearch() {
   if (!q && Date.now() < backendDownUntil) {
     state.articles = OFFLINE_ARTICLES;
     els.loadingList.classList.add('hidden');
-    els.searchTiming.textContent = 'FI · SV · RU · EN · ET · ES';
+    els.searchTiming.textContent = 'FI · SV · RU · EN · ET · ES · ZH · PL';
     renderArticleList();
     return;
   }
 
   els.loadingList.classList.remove('hidden');
   els.articlesContainer.innerHTML = '';
-  els.searchTiming.textContent = 'Searching 6 languages...';
+  els.searchTiming.textContent = 'Searching 8 languages...';
 
   const startedAt = performance.now();
   let resolvedArticles = null;
@@ -203,7 +203,7 @@ async function runSearch() {
   clientSearchCache.set(cacheKey, resolvedArticles);
 
   const elapsedSec = ((performance.now() - startedAt) / 1000).toFixed(2);
-  els.searchTiming.textContent = q ? `${elapsedSec}s` : 'FI · SV · RU · EN · ET · ES';
+  els.searchTiming.textContent = q ? `${elapsedSec}s` : 'FI · SV · RU · EN · ET · ES · ZH · PL';
   els.loadingList.classList.add('hidden');
   renderArticleList();
 }
@@ -256,35 +256,6 @@ function renderArticleList() {
     }
     btn.appendChild(tagsRow);
 
-    const availableLangs = SUPPORTED_LANGS.filter((l) => Boolean(art.editions?.[l]?.title));
-    const maxRefs = Math.max(
-      0,
-      ...availableLangs.map((l) => Number(art.editions?.[l]?.refCount ?? 0))
-    );
-
-    const refsLine = document.createElement('div');
-    refsLine.className = 'wb-article-refs';
-    refsLine.appendChild(document.createTextNode('Refs: '));
-
-    availableLangs.forEach((lang, idx) => {
-      if (idx > 0) {
-        refsLine.appendChild(document.createTextNode(' · '));
-      }
-      const refCount = Number(art.editions?.[lang]?.refCount ?? 0);
-      const isMuchFewer =
-        maxRefs >= 6 && (maxRefs >= refCount * 2.5 || maxRefs - refCount >= 12);
-
-      const span = document.createElement('span');
-      if (isMuchFewer) {
-        span.className = 'wb-ref-low';
-        span.textContent = `${lang.toUpperCase()} ${refCount} (low)`;
-      } else {
-        span.textContent = `${lang.toUpperCase()} ${refCount}`;
-      }
-      refsLine.appendChild(span);
-    });
-
-    btn.appendChild(refsLine);
     btn.addEventListener('click', () => openArticleMistakes(art));
     els.articlesContainer.appendChild(btn);
   }

@@ -283,11 +283,70 @@
     anchorEl.insertAdjacentElement('afterend', note);
   }
 
+  function findSectionEditUrl(block) {
+    const parserOut =
+      document.querySelector('#mw-content-text .mw-parser-output') ||
+      document.querySelector('#mw-content-text');
+
+    if (parserOut && block) {
+      let topChild = block;
+      while (topChild && topChild.parentElement && topChild.parentElement !== parserOut) {
+        topChild = topChild.parentElement;
+      }
+
+      let prev = topChild ? topChild.previousElementSibling : null;
+      while (prev) {
+        if (prev.matches('h2, h3, h4, .mw-heading')) {
+          const editLink =
+            prev.querySelector('.mw-editsection a[href*="action=edit"]') ||
+            prev.querySelector('.mw-editsection a[href*="veaction=edit"]') ||
+            prev.querySelector('a[href*="section="]');
+          if (editLink && editLink.href) {
+            return editLink.href;
+          }
+        }
+        prev = prev.previousElementSibling;
+      }
+    }
+
+    // Lead / intro section fallback: open section=0 edit page
+    const pageEditLink =
+      document.querySelector('#ca-edit a[href*="action=edit"]') ||
+      document.querySelector('#ca-ve-edit a[href*="veaction=edit"]');
+    if (pageEditLink && pageEditLink.href) {
+      try {
+        const u = new URL(pageEditLink.href);
+        if (!u.searchParams.has('section')) {
+          u.searchParams.set('section', '0');
+        }
+        return u.toString();
+      } catch {
+        return pageEditLink.href;
+      }
+    }
+
+    const pathMatch = window.location.pathname.match(/\/wiki\/(.+)$/);
+    const titleParam = pathMatch ? decodeURIComponent(pathMatch[1]) : '';
+    return `${window.location.origin}/w/index.php?title=${encodeURIComponent(titleParam)}&action=edit&section=0`;
+  }
+
+  function attachEditClickHandler(el, editUrl) {
+    if (!el || !editUrl) return;
+    el.title = 'Click to open Wikipedia edit page for this section';
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      window.location.href = editUrl;
+    });
+  }
+
   function applyDiscrepancyHighlight(discrepancy) {
     clearExistingHighlights();
     const match = findBestMatchingBlock(discrepancy);
     const block = match.block;
     if (!block) return { highlighted: false };
+
+    const editUrl = findSectionEditUrl(block);
 
     // Prefer highlighting the exact differing phrase/word when available,
     // falling back to the matched sentence/clause or full paragraph focus.
@@ -302,8 +361,13 @@
       );
     }
 
-    if (!markEl) {
+    if (markEl) {
+      document.querySelectorAll('mark.wikibridge-disputed-highlight').forEach((m) => {
+        attachEditClickHandler(m, editUrl);
+      });
+    } else {
       block.classList.add('wikibridge-paragraph-focus');
+      attachEditClickHandler(block, editUrl);
     }
 
     renderMinimalInlineNote(block, discrepancy);
@@ -311,7 +375,7 @@
     const scrollTarget = markEl || block;
     scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-    return { highlighted: true };
+    return { highlighted: true, editUrl };
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

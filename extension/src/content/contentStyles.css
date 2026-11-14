@@ -9,12 +9,14 @@ mark.wikibridge-disputed-highlight {
   padding: 1px 2px !important;
   font-style: inherit !important;
   font-weight: inherit !important;
+  cursor: pointer !important;
 }
 
 .wikibridge-paragraph-focus {
   background-color: #fee7e6 !important;
   outline: 1px solid #d33 !important;
   outline-offset: 4px !important;
+  cursor: pointer !important;
 }
 
 .wikibridge-inline-note {

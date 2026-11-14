@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "WikiBridge — Cross-Lingual Fact Checker (FI · SV · RU)",
   "version": "1.0.0",
-  "description": "Find factual discrepancies, missing citations, and non-neutral emotional tone across FI, SV, RU, EN, ET, and ES Wikipedia and jump directly to the passage.",
+  "description": "Find factual discrepancies, missing citations, and non-neutral emotional tone across FI, SV, RU, EN, ET, ES, ZH, and PL Wikipedia and jump directly to the passage.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -35,6 +35,8 @@
     "https://en.wikipedia.org/*",
     "https://et.wikipedia.org/*",
     "https://es.wikipedia.org/*",
+    "https://zh.wikipedia.org/*",
+    "https://pl.wikipedia.org/*",
     "https://www.wikidata.org/*",
     "http://localhost:4000/*",
     "http://127.0.0.1:4000/*"
@@ -47,7 +49,9 @@
         "https://ru.wikipedia.org/*",
         "https://en.wikipedia.org/*",
         "https://et.wikipedia.org/*",
-        "https://es.wikipedia.org/*"
+        "https://es.wikipedia.org/*",
+        "https://zh.wikipedia.org/*",
+        "https://pl.wikipedia.org/*"
       ],
       "css": ["src/content/contentStyles.css"],
       "js": ["src/content/contentScript.js"],
