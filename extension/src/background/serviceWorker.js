@@ -98,6 +98,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     try {
       const { targetUrl, discrepancy } = message;
       const tabId = await getOrNavigateWikipediaTab(targetUrl);
+      if (!discrepancy) {
+        sendResponse({ ok: true, result: null });
+        return;
+      }
       const res = await sendHighlightMessageWithRetry(tabId, {
         type: 'APPLY_DISCREPANCY_HIGHLIGHT',
         discrepancy,

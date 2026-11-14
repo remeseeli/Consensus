@@ -313,6 +313,22 @@ body {
   border: 1px solid #eaecf0;
   font-size: 11.5px;
   color: #202122;
+  text-align: left;
+  font-family: inherit;
+}
+
+.wb-ref-box--clickable {
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.wb-ref-box--clickable:hover {
+  border-color: #3366cc;
+  background-color: #eef3ff;
+}
+
+.wb-ref-box--has-issue {
+  border-bottom: 2px solid #d33;
 }
 
 .wb-ref-box--low {
@@ -347,6 +363,12 @@ body {
   background-color: #ffffff;
   padding: 12px;
   margin-bottom: 12px;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.wb-mistake-card--focused {
+  border-color: #3366cc;
+  box-shadow: 0 0 0 3px rgba(51, 102, 204, 0.28);
 }
 
 .wb-mistake-card--refs {
@@ -395,6 +417,20 @@ body {
   font-weight: 600;
 }
 
+.wb-issue-target-lang--link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  color: #3366cc;
+  cursor: pointer;
+  text-align: left;
+}
+
+.wb-issue-target-lang--link:hover {
+  text-decoration: underline;
+}
+
 .wb-mistake-heading {
   margin: 0 0 5px 0;
   font-family: 'Linux Libertine', 'Georgia', 'Times New Roman', serif;
@@ -419,9 +455,29 @@ body {
 
 .wb-claim-line {
   display: flex;
+  align-items: flex-start;
+  width: 100%;
   gap: 8px;
   padding: 5px 8px;
+  border: none;
   border-bottom: 1px solid #eaecf0;
+  background: transparent;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.wb-claim-line--clickable {
+  cursor: pointer;
+}
+
+.wb-claim-line--clickable:hover {
+  background-color: #eef3ff;
+}
+
+.wb-claim-line--clickable:hover .wb-claim-code {
+  text-decoration: underline;
 }
 
 .wb-claim-line:last-child {
@@ -432,15 +488,23 @@ body {
   background-color: #fee7e6;
 }
 
+.wb-claim-line--flagged.wb-claim-line--clickable:hover {
+  background-color: #fbd5d3;
+}
+
 .wb-claim-code {
   width: 24px;
   flex-shrink: 0;
   font-weight: 700;
-  color: #54595d;
+  color: #3366cc;
 }
 
 .wb-claim-code.target {
   color: #b32424;
+}
+
+.wb-claim-text {
+  flex: 1;
 }
 
 .wb-snippet-preview {
@@ -450,6 +514,14 @@ body {
   font-size: 11.5px;
   color: #363b3f;
   margin-top: 6px;
+}
+
+.wb-snippet-translation {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed #d8dce0;
+  color: #202122;
+  font-weight: 500;
 }
 
 .wb-empty {

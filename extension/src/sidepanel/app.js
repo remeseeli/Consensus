@@ -8,6 +8,10 @@ import {
   getCachedBrowserAnalysis,
   searchLiveFromBrowser,
 } from '../shared/liveBrowserScanner.js';
+import {
+  lookupOfflineTermTranslation,
+  translateToEnglish,
+} from '../shared/translator.js';
 
 // Instant client-side caches so repeat queries and clicking articles take 0ms
 const clientSearchCache = new Map();
@@ -336,7 +340,40 @@ async function findInWikipediaPage(targetUrl, discrepancy) {
   }
 }
 
-function renderReferenceStrip(art) {
+function jumpToIssueCard(card) {
+  if (!card) return;
+  document
+    .querySelectorAll('.wb-mistake-card--focused')
+    .forEach((el) => el.classList.remove('wb-mistake-card--focused'));
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  requestAnimationFrame(() => {
+    card.classList.add('wb-mistake-card--focused');
+  });
+  setTimeout(() => {
+    card.classList.remove('wb-mistake-card--focused');
+  }, 2200);
+}
+
+function handleLanguageClick(art, lang, discrepancies, cardByLang, preferredDisc = null) {
+  const matchingDisc =
+    (preferredDisc && preferredDisc.targetLang === lang ? preferredDisc : null) ||
+    discrepancies.find((d) => d.targetLang === lang) ||
+    null;
+
+  if (matchingDisc) {
+    const targetCard = cardByLang.get(lang);
+    if (targetCard) jumpToIssueCard(targetCard);
+  }
+
+  const langUrl = art.editions?.[lang]?.url || '';
+  if (langUrl) {
+    findInWikipediaPage(langUrl, matchingDisc);
+  } else {
+    showError(`No Wikipedia article URL available for ${LANG_NAMES[lang] || lang.toUpperCase()}.`);
+  }
+}
+
+function renderReferenceStrip(art, discrepancies, cardByLang) {
   const strip = document.createElement('div');
   strip.className = 'wb-ref-strip';
 
@@ -353,9 +390,19 @@ function renderReferenceStrip(art) {
     const refs = Number(ed?.refCount ?? 0);
     const isLow =
       maxRefs >= 6 && (maxRefs >= refs * 2.5 || maxRefs - refs >= 12);
+    const hasIssue = discrepancies.some((d) => d.targetLang === lang);
 
-    const box = document.createElement('div');
-    box.className = `wb-ref-box${isLow ? ' wb-ref-box--low' : ''}`;
+    const box = document.createElement('button');
+    box.type = 'button';
+    box.className = `wb-ref-box wb-ref-box--clickable${isLow ? ' wb-ref-box--low' : ''}${
+      hasIssue ? ' wb-ref-box--has-issue' : ''
+    }`;
+    box.title = hasIssue
+      ? `Open ${LANG_NAMES[lang]} Wikipedia & jump to issue`
+      : `Open ${LANG_NAMES[lang]} Wikipedia`;
+    box.addEventListener('click', () =>
+      handleLanguageClick(art, lang, discrepancies, cardByLang)
+    );
 
     const langSpan = document.createElement('span');
     langSpan.className = 'wb-ref-box-lang';
@@ -381,12 +428,14 @@ function renderArticleMistakes() {
   const discrepancies = analysis.discrepancies || [];
   els.detailContainer.innerHTML = '';
 
+  const cardByLang = new Map();
+
   const heading = document.createElement('h2');
   heading.className = 'wb-detail-title';
   heading.textContent = art.canonicalLabel;
   els.detailContainer.appendChild(heading);
 
-  els.detailContainer.appendChild(renderReferenceStrip(art));
+  els.detailContainer.appendChild(renderReferenceStrip(art, discrepancies, cardByLang));
 
   if (discrepancies.length === 0) {
     const empty = document.createElement('div');
@@ -414,6 +463,10 @@ function renderArticleMistakes() {
 
     const card = document.createElement('div');
     card.className = `wb-mistake-card${cardModifier}`;
+    card.dataset.targetLang = disc.targetLang;
+    if (!cardByLang.has(disc.targetLang)) {
+      cardByLang.set(disc.targetLang, card);
+    }
 
     const header = document.createElement('div');
     header.className = 'wb-mistake-header';
@@ -423,9 +476,14 @@ function renderArticleMistakes() {
     typeBadge.textContent = issueLabel;
 
     const langFull = LANG_NAMES[disc.targetLang] || disc.targetLang.toUpperCase();
-    const langTarget = document.createElement('span');
-    langTarget.className = 'wb-issue-target-lang';
+    const langTarget = document.createElement('button');
+    langTarget.type = 'button';
+    langTarget.className = 'wb-issue-target-lang wb-issue-target-lang--link';
     langTarget.textContent = `in ${langFull} (${disc.targetLang.toUpperCase()}) Wikipedia`;
+    langTarget.title = `Open ${langFull} Wikipedia`;
+    langTarget.addEventListener('click', () =>
+      handleLanguageClick(art, disc.targetLang, discrepancies, cardByLang, disc)
+    );
 
     header.appendChild(typeBadge);
     header.appendChild(langTarget);
@@ -451,14 +509,25 @@ function renderArticleMistakes() {
         if (!val || val === 'Edition missing' || val === 'Article missing') continue;
 
         const isFlagged = lang === disc.targetLang;
-        const row = document.createElement('div');
-        row.className = `wb-claim-line${isFlagged ? ' wb-claim-line--flagged' : ''}`;
+        const langHasIssue = discrepancies.some((d) => d.targetLang === lang);
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = `wb-claim-line wb-claim-line--clickable${
+          isFlagged ? ' wb-claim-line--flagged' : ''
+        }`;
+        row.title = langHasIssue
+          ? `Open ${LANG_NAMES[lang]} Wikipedia & jump to its issue`
+          : `Open ${LANG_NAMES[lang]} Wikipedia`;
+        row.addEventListener('click', () =>
+          handleLanguageClick(art, lang, discrepancies, cardByLang, disc)
+        );
 
         const code = document.createElement('span');
         code.className = `wb-claim-code${isFlagged ? ' target' : ''}`;
         code.textContent = lang.toUpperCase();
 
         const text = document.createElement('span');
+        text.className = 'wb-claim-text';
         text.textContent = val;
 
         row.appendChild(code);
@@ -468,10 +537,34 @@ function renderArticleMistakes() {
       card.appendChild(compareBox);
     }
 
-    if (disc.disputedSnippet) {
+    const highlightOrSnippet = disc.highlightPhrase || disc.disputedSnippet;
+    if (highlightOrSnippet) {
       const quote = document.createElement('div');
       quote.className = 'wb-snippet-preview';
-      quote.textContent = `Highlighted on page: "${disc.highlightPhrase || disc.disputedSnippet}"`;
+
+      const quoteLine = document.createElement('div');
+      quoteLine.textContent = `Highlighted on page: "${highlightOrSnippet}"`;
+      quote.appendChild(quoteLine);
+
+      if (disc.targetLang && disc.targetLang !== 'en') {
+        const transLine = document.createElement('div');
+        transLine.className = 'wb-snippet-translation';
+        const instant = lookupOfflineTermTranslation(highlightOrSnippet);
+        transLine.textContent = instant
+          ? `English translation: "${instant}"`
+          : 'English translation: translating...';
+        quote.appendChild(transLine);
+
+        translateToEnglish(highlightOrSnippet, disc.targetLang).then((translated) => {
+          if (!transLine.isConnected) return;
+          if (translated) {
+            transLine.textContent = `English translation: "${translated}"`;
+          } else if (!instant) {
+            transLine.remove();
+          }
+        });
+      }
+
       card.appendChild(quote);
     }
 
