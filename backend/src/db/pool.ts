@@ -13,10 +13,17 @@ export function getDbPool(): Pool {
       database: config.mariadb.database,
       waitForConnections: true,
       connectionLimit: 12,
-      connectTimeout: 1200,
+      connectTimeout: config.mariadb.connectTimeoutMs,
       queueLimit: 0,
       charset: 'utf8mb4',
       timezone: 'Z',
+      ...(config.mariadb.ssl
+        ? {
+            ssl: {
+              rejectUnauthorized: config.mariadb.sslRejectUnauthorized,
+            },
+          }
+        : {}),
     });
   }
   return pool;
