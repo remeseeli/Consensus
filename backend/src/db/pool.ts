@@ -3,33 +3,58 @@ import { config } from '../config.js';
 
 let pool: Pool | null = null;
 
+function getBaseConnectionOptions() {
+  return {
+    host: config.mariadb.host,
+    port: config.mariadb.port,
+    user: config.mariadb.user,
+    password: config.mariadb.password,
+    connectTimeout: config.mariadb.connectTimeoutMs,
+    charset: 'utf8mb4',
+    timezone: 'Z',
+    ...(config.mariadb.ssl
+      ? {
+          ssl: {
+            rejectUnauthorized: config.mariadb.sslRejectUnauthorized,
+          },
+        }
+      : {}),
+  };
+}
+
 export function getDbPool(): Pool {
   if (!pool) {
     pool = mysql.createPool({
-      host: config.mariadb.host,
-      port: config.mariadb.port,
-      user: config.mariadb.user,
-      password: config.mariadb.password,
+      ...getBaseConnectionOptions(),
       database: config.mariadb.database,
       waitForConnections: true,
       connectionLimit: 12,
-      connectTimeout: config.mariadb.connectTimeoutMs,
       queueLimit: 0,
-      charset: 'utf8mb4',
-      timezone: 'Z',
-      ...(config.mariadb.ssl
-        ? {
-            ssl: {
-              rejectUnauthorized: config.mariadb.sslRejectUnauthorized,
-            },
-          }
-        : {}),
     });
   }
   return pool;
 }
 
 export async function initializeMariaDbSchema(): Promise<void> {
+  // Ensure the target database exists on fresh cloud instances (e.g. MariaDB Cloud / SkySQL)
+  const safeDbName = config.mariadb.database.replace(/`/g, '');
+  let bootstrapConn: mysql.Connection | null = null;
+  try {
+    bootstrapConn = await mysql.createConnection(getBaseConnectionOptions());
+    await bootstrapConn.query(
+      `CREATE DATABASE IF NOT EXISTS \`${safeDbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+    );
+  } catch (err) {
+    console.warn(
+      '[WikiBridge Backend] Database auto-create skipped:',
+      err instanceof Error ? err.message : err
+    );
+  } finally {
+    if (bootstrapConn) {
+      await bootstrapConn.end().catch(() => {});
+    }
+  }
+
   const db = getDbPool();
 
   await db.query(`
