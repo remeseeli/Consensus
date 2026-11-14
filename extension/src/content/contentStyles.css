@@ -1,0 +1,82 @@
+/* ============================================================================
+   WikiBridge Minimal In-Page Highlight Styles — Wikipedia Vector 2022
+   ============================================================================ */
+
+mark.wikibridge-disputed-highlight {
+  background-color: #fee7e6 !important;
+  color: #202122 !important;
+  border-bottom: 2px solid #d33 !important;
+  padding: 1px 2px !important;
+  font-style: inherit !important;
+  font-weight: inherit !important;
+}
+
+.wikibridge-paragraph-focus {
+  background-color: #fee7e6 !important;
+  outline: 1px solid #d33 !important;
+  outline-offset: 4px !important;
+}
+
+.wikibridge-inline-note {
+  margin: 10px 0 14px 0;
+  padding: 10px 12px;
+  background-color: #f8f9fa;
+  border: 1px solid #a2a9b1;
+  border-left: 3px solid #d33;
+  color: #202122;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  max-width: 680px;
+}
+
+.wikibridge-inline-note-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wikibridge-inline-note-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.wikibridge-inline-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background-color: #fee7e6;
+  border: 1px solid #d33;
+  color: #b32424;
+}
+
+.wikibridge-inline-note-title {
+  font-weight: 600;
+  color: #202122;
+  font-size: 13px;
+}
+
+.wikibridge-inline-note-body {
+  margin: 5px 0 0 0;
+  color: #202122;
+}
+
+.wikibridge-inline-close {
+  background: transparent;
+  border: none;
+  color: #54595d;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.wikibridge-inline-close:hover {
+  color: #202122;
+}

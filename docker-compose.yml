@@ -1,0 +1,50 @@
+services:
+  mariadb:
+    image: mariadb:11.4
+    container_name: wikibridge-mariadb
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-wikibridge_root_pw}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-wikibridge}
+      MARIADB_USER: ${MARIADB_USER:-wikibridge}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-wikibridge_pw}
+    ports:
+      - "${MARIADB_PORT:-3306}:3306"
+    volumes:
+      - wikibridge_mariadb_data:/var/lib/mysql
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./db/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: wikibridge-backend
+    restart: unless-stopped
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    ports:
+      - "${PORT:-4000}:4000"
+    environment:
+      PORT: 4000
+      NODE_ENV: production
+      MARIADB_HOST: mariadb
+      MARIADB_PORT: 3306
+      MARIADB_USER: ${MARIADB_USER:-wikibridge}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-wikibridge_pw}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-wikibridge}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GOOGLE_BOOKS_API_KEY: ${GOOGLE_BOOKS_API_KEY:-}
+      SEMANTIC_SCHOLAR_API_KEY: ${SEMANTIC_SCHOLAR_API_KEY:-}
+      WIKIMEDIA_USER_AGENT: ${WIKIMEDIA_USER_AGENT:-WikiBridgeExtension/1.0 (https://github.com/junction26/wikibridge; editor-tools@wikibridge.local)}
+
+volumes:
+  wikibridge_mariadb_data:

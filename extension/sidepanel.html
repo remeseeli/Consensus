@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WikiBridge</title>
+    <link rel="stylesheet" href="src/sidepanel/styles.css" />
+  </head>
+  <body>
+    <div class="wb-shell">
+      <!-- Minimal Header + Search -->
+      <header class="wb-header">
+        <div class="wb-header-top">
+          <h1 class="wb-brand">WikiBridge</h1>
+          <span id="search-timing" class="wb-timing"></span>
+        </div>
+        <form id="search-form" class="wb-search-row">
+          <input
+            id="input-topic-query"
+            type="search"
+            class="wb-input"
+            placeholder="Search topic (e.g., Winter War, Nokia, Sauna)..."
+            autocomplete="off"
+          />
+          <button id="btn-search" type="submit" class="wb-btn wb-btn-primary">
+            Search
+          </button>
+        </form>
+      </header>
+
+      <div id="feedback-banner" class="wb-feedback hidden"></div>
+
+      <!-- Main Content -->
+      <main class="wb-main">
+        <!-- View 1: Articles with Issues -->
+        <section id="view-article-list">
+          <div id="list-heading" class="wb-section-label">Articles with detected issues</div>
+          <div id="loading-list" class="wb-loading hidden">
+            Scanning FI, SV, and RU Wikipedia in parallel...
+          </div>
+          <div id="articles-container" class="wb-list"></div>
+        </section>
+
+        <!-- View 2: Issues in Selected Article -->
+        <section id="view-article-detail" class="hidden">
+          <button id="btn-back-to-list" type="button" class="wb-back-btn">
+            &larr; Back to articles
+          </button>
+
+          <div id="loading-detail" class="wb-loading hidden">
+            Loading article issues...
+          </div>
+
+          <div id="detail-container"></div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="src/sidepanel/app.js"></script>
+  </body>
+</html>
