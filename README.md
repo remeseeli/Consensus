@@ -1,129 +1,243 @@
-# Consensus — Cross-Lingual Wikipedia Fact-Checking & Citation Workbench (`FI` · `SV` · `RU`)
+# Consensus — Cross-Lingual Wikipedia Fact-Checking & Discrepancy Workbench
 
-**Consensus** is a Manifest V3 browser extension and Node.js/TypeScript + **MariaDB** backend designed for Wikipedia editors auditing factual consistency, citation gaps, and outdated statistics across **Finnish (`fi.wikipedia.org`)**, **Swedish (`sv.wikipedia.org`)**, and **Russian (`ru.wikipedia.org`)** Wikipedia.
+**Consensus** is a Manifest V3 browser extension and optional Node.js/TypeScript + MariaDB backend that helps Wikipedia editors and researchers detect factual discrepancies, citation imbalances, outdated claims, and non-neutral (emotional) framing across multiple language editions of Wikipedia—and jump straight to the exact passage to inspect or edit it.
 
 ---
 
-## 1. System Architecture
+## 1. The Challenge & What Consensus Does
+
+### The Problem
+Wikipedia articles on the same topic are written independently by different language communities. As a result, critical articles frequently drift out of sync:
+- **Conflicting facts & statistics:** Different language editions report different dates, casualty figures, populations, or historical attributions.
+- **Citation gaps & uneven sourcing:** One edition may cite dozens of peer-reviewed sources while another relies on a handful of references or carries unresolved `[citation needed]` tags.
+- **Stale or outdated data:** Updates made in one language often fail to propagate to others.
+- **Non-neutral (POV) framing:** Certain editions introduce emotionally loaded phrasing or carry neutrality dispute templates (`{{POV}}`, `{{НТЗ}}`, etc.).
+- **High-traffic misinformation risk:** When these issues appear on heavily visited pages, inaccurate or unsourced claims reach far more readers.
+
+### How Consensus Solves It
+Consensus connects matching articles across Wikipedia editions via **Wikidata Q-IDs** and surfaces cross-lingual issues in a persistent browser Side Panel:
+1. **Top Risk Dashboard:** Fetches high-traffic Wikipedia articles from the Wikimedia Pageviews REST API, scans them across selected languages, and ranks them by **misinformation spread risk** (daily traffic × issue count × severity).
+2. **Multi-Language Topic Search:** Searches Wikidata and selected Wikipedias in parallel, compares claims side-by-side, and highlights per-language reference counts.
+3. **5-Category Discrepancy Detection:**
+   - **Different information** — Diverging dates, numbers, and factual claims across editions.
+   - **Much fewer references** — Severe `<ref>` count imbalance compared to other language editions.
+   - **Missing reference** — Localized `[citation needed]` tags (`{{Lähde}}`, `{{Källa behövs}}`, `{{Нет АИ}}`, `{{Citation needed}}`, etc.).
+   - **Not neutral (emotional tone)** — NPOV dispute templates and loaded/subjective wording.
+   - **Outdated information** — Stale edition timestamps or lagging year references.
+4. **In-Page DOM Highlighting & Click-to-Edit:** Clicking any flagged language or **Find in Wikipedia** opens the article tab, scrolls to the disputed passage, highlights it in red (`#fee7e6` / `#d33`) with an inline note, and lets editors click the highlighted passage to jump directly to the Wikipedia section editor (`?action=edit`).
+5. **Inline Phrase Translation & Saved Queue:** Translates flagged non-English snippets into English inside the Side Panel and lets editors bookmark articles to a persistent **Saved** queue to fix later.
+
+---
+
+## 2. Multi-Language Support
+
+Consensus supports cross-lingual scanning across **17 selectable Wikipedia editions** in the extension's **Settings** menu, plus dynamic discovery of additional major editions:
+
+| Code | Language | Code | Language | Code | Language |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `de` | German | `hu` | Hungarian | `pt` | Portuguese |
+| `en` | English | `it` | Italian | `ru` | Russian |
+| `es` | Spanish | `ja` | Japanese | `sv` | Swedish |
+| `et` | Estonian | `no` | Norwegian | `tr` | Turkish |
+| `fi` | Finnish | `pl` | Polish | `uk` | Ukrainian |
+| `fr` | French | `zh` | Chinese | — | — |
+
+- **Dynamic Top-5 Longest Editions:** When enabled in Settings (*"Also include 5 longest Wikipedia editions per article"*), Consensus automatically probes article lengths across additional Wikipedia editions per Wikidata Q-ID and includes the 5 longest editions alongside your selected languages.
+- **Offline Fallback Dataset:** Includes a built-in fallback dataset covering 9 editions (`FI`, `SV`, `RU`, `EN`, `ET`, `ES`, `ZH`, `PL`, `HU`) so the UI and page highlighting continue to work even when offline.
+- **Companion Backend (`backend/`):** Currently provides deep server-side semantic comparison (Gemini), academic citation verification, and localized `<ref>` formatting focused on the trilingual core (`FI`, `SV`, `RU`, plus `EN` citation templates).
+
+---
+
+## 3. Tech Stack
+
+- **Browser Extension (`extension/`):**
+  - **Manifest V3** (Chrome, Edge, Brave, and Chromium-based browsers)
+  - **Vanilla JavaScript (ES Modules)** — zero frontend build step required
+  - **Chrome APIs:** `sidePanel`, `activeTab`, `tabs`, `scripting`
+  - **Wikimedia & Wikidata CORS APIs:** MediaWiki Action API, Wikidata `wbgetentities` / `wbsearchentities`, Wikimedia Pageviews REST API
+  - **Client UI:** Wikipedia Vector-2022–inspired CSS, `localStorage` persistence for language preferences, dashboard cache, and saved bookmarks
+- **Backend API (`backend/` — optional):**
+  - **Node.js 22+ & TypeScript** (`tsx` for dev watch mode, `tsc` for builds)
+  - **Express** REST API with CORS support for `chrome-extension://`, `moz-extension://`, and `*.wikipedia.org`
+  - **Gemini AI (`@google/genai`, `gemini-2.5-flash`)** for structured JSON semantic comparison, with a deterministic heuristic fallback when no API key is configured
+  - **Academic & Archival Verification:** Crossref, OpenAlex, Semantic Scholar, Google Books, SSRF-safe link health checker, and Internet Archive Wayback Machine recovery
+  - **Rate Limiting:** Custom token-bucket rate limiters and retry/backoff per external host
+- **Database (`db/` — optional):**
+  - **MariaDB 11.4+** (`InnoDB`, `utf8mb4_unicode_ci`) via `mysql2`
+  - Composite ranking indexes, `FULLTEXT` multilingual search, and SHA-256 keyed TTL response caches
+- **Containerization:** Docker & Docker Compose (`docker-compose.yml`)
+
+---
+
+## 4. System Architecture
 
 ```text
 ┌───────────────────────────────────────────────────────────────────────────────┐
 │                   MANIFEST V3 BROWSER EXTENSION (extension/)                  │
 │                                                                               │
 │  ┌──────────────────────────────┐      ┌───────────────────────────────────┐  │
-│  │ Side Panel / Docked Sidebar  │◄────►│ Background Service Worker (MV3)   │  │
-│  │ - Topic Search & Chips       │      │ - Cross-tab URL Navigation        │  │
-│  │ - Top 50 Priority Queue      │      │ - Tab Load Synchronization        │  │
-│  │ - Language Agreement Matrix  │      └─────────────────┬─────────────────┘  │
-│  │ - Localized <ref> Formatter  │                        │                    │
-│  └──────────────┬───────────────┘                        ▼                    │
-│                 │                      ┌───────────────────────────────────┐  │
-│                 │ REST JSON            │ Wikipedia Content Script          │  │
-│                 │                      │ - 3-Tier DOM Text Matcher         │  │
-│                 │                      │ - Red (#fee7e6 / #d33) Highlight  │  │
-│                 │                      │ - Inline Verification Card        │  │
-│                 │                      │ - Source & VisualEditor Injector  │  │
-│                 │                      └───────────────────────────────────┘  │
-└─────────────────┼─────────────────────────────────────────────────────────────┘
+│  │ Side Panel (sidepanel.html)  │◄────►│ Background Service Worker (MV3)   │  │
+│  │ - Top Risk Dashboard         │      │ - Opens Side Panel on icon click  │  │
+│  │ - 17-Lang Settings + Top 5   │      │ - Tab navigation & load wait      │  │
+│  │ - Claim Matrix & EN Glosses  │      └─────────────────┬─────────────────┘  │
+│  │ - Saved Bookmarks Queue      │                        │                    │
+│  │ - Direct Browser CORS Scanner│                        ▼                    │
+│  └──────────────┬───────────────┘      ┌───────────────────────────────────┐  │
+│                 │                      │ Wikipedia Content Script          │  │
+│                 │ Direct Wikimedia /   │ - 3-Tier DOM Text Matcher         │  │
+│                 │ Wikidata APIs OR     │ - Red (#fee7e6 / #d33) Highlight  │  │
+│                 │ Optional REST JSON   │ - Inline Note & Click-to-Edit     │  │
+└─────────────────┼──────────────────────┴───────────────────────────────────┘  ┘
+                  │  (Optional: http://localhost:4000/api)
                   ▼
 ┌───────────────────────────────────────────────────────────────────────────────┐
 │                 EXPRESS + TYPESCRIPT BACKEND API (backend/)                   │
 │                                                                               │
 │  - Token-Bucket Rate Limiters & Retry/Backoff per External Host               │
-│  - MediaWiki Action API (fi/sv/ru) + Wikidata Q-ID Batch Linker (50 IDs/req)  │
+│  - MediaWiki Action API + Wikidata Q-ID Batch Linker                          │
 │  - Wikitext <ref> Density, Infobox & Citation-Needed Tag Parser               │
-│  - Wikimedia 30-Day Pageviews REST Client                                     │
-│  - LLM Semantic Comparator (Gemini @google/genai JSON Schema + Heuristic)     │
-│  - External Verifier: Crossref · OpenAlex · Semantic Scholar · Google Books   │
-│  - SSRF-Safe Link Health Checker + Internet Archive Wayback Machine Recovery  │
+│  - LLM Semantic Comparator (Gemini @google/genai + Heuristic Fallback)        │
+│  - Academic Verifier (Crossref · OpenAlex · Semantic Scholar · Google Books)  │
+│  - SSRF-Safe Link Health Checker + Wayback Machine Recovery                   │
 └─────────────────┬─────────────────────────────────────────────────────────────┘
                   ▼
 ┌───────────────────────────────────────────────────────────────────────────────┐
 │             MARIADB 11.4+ (InnoDB · utf8mb4_unicode_ci) (db/)                 │
 │                                                                               │
 │  - articles (Composite Ranking Indexes + FULLTEXT Multilingual Index)         │
-│  - article_editions_content (Cached Extracts, Infobox JSON, <ref> Inventory)  │
+│  - article_editions_content (Extracts, Infobox JSON, <ref> Inventory)         │
 │  - discrepancies (Mismatch Types, Snippets, Language Agreement Matrix JSON)   │
-│  - verified_sources (DOI/ISBN, Confidence Score, Localized FI/SV/RU <ref>s)   │
-│  - topic_search_cache & external_api_cache (SHA-256 Keyed TTL Response Cache) │
+│  - verified_sources (DOI/ISBN, Confidence Score, Localized <ref> Templates)   │
+│  - topic_search_cache & external_api_cache (SHA-256 Keyed TTL Cache)          │
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 2. Quick Start
+## 5. How to Run Consensus
 
-### Step A — Start MariaDB & Backend API (Docker Compose)
+You can run **Consensus** in seconds as a standalone browser extension, or run the full stack with the backend API and MariaDB.
 
-1. Optional: set `GEMINI_API_KEY` in your shell or a root `.env` file to enable live Gemini semantic comparison (if omitted, the backend automatically falls back to its deterministic cross-lingual numeric/date/citation-gap analyzer + live academic verification):
+### Option A — Extension Only (Fastest, No Backend or Docker Required)
+
+The extension includes a direct browser scanner (`extension/src/shared/liveBrowserScanner.js`) that queries Wikipedia, Wikidata, and Wikimedia Pageviews directly over HTTPS—no build tools, database, or server setup needed.
+
+1. Clone this repository:
+   ```bash
+   git clone <repository-url>
+   cd junction
+   ```
+2. Open **Chrome**, **Edge**, or **Brave** and navigate to `chrome://extensions`.
+3. Enable **Developer mode** (top-right toggle).
+4. Click **Load unpacked** and select the `extension/` directory in this repository.
+5. Click the **Consensus** icon in the browser toolbar to open the **Side Panel**.
+6. Click the menu icon inside the search bar to select any combination of the **17 supported languages** and toggle **Also include 5 longest Wikipedia editions per article**.
+
+---
+
+### Option B — Full Stack with Docker Compose (macOS / Linux / Windows)
+
+Run MariaDB 11.4 and the Express/TypeScript backend in containers alongside the browser extension.
+
+**Prerequisites:**
+- [Docker](https://docs.docker.com/get-docker/) with Docker Compose (`docker compose`)
+- A Chromium-based browser (Chrome, Edge, or Brave)
+
+**Steps:**
+1. *(Optional)* Set `GEMINI_API_KEY` (and optional `GOOGLE_BOOKS_API_KEY`, `SEMANTIC_SCHOLAR_API_KEY`) in your shell or a `.env` file at the repo root to enable live Gemini semantic comparison. If omitted, the backend automatically uses its deterministic heuristic analyzer.
+2. Start MariaDB and the backend API from the repository root:
    ```bash
    docker compose up --build
    ```
-   - **MariaDB** initializes `db/schema.sql` (`InnoDB`, `utf8mb4_unicode_ci`) and pre-loads `db/seed.sql` on port `3306`.
-   - **Backend API** starts on `http://localhost:4000` (`/api/health`, `/api/search`, `/api/articles/:qid/analyze`, `/api/verify-claim`, `/api/citations/format`).
+   - **MariaDB** initializes [`db/schema.sql`](db/schema.sql) and seeds reference data from [`db/seed.sql`](db/seed.sql) on port `3306`.
+   - **Backend API** listens on `http://localhost:4000` (verify with `http://localhost:4000/api/health`).
+3. Load the `extension/` folder via `chrome://extensions` as described in **Option A**.
 
-### Step B — Run Backend Locally Without Docker (Alternative)
+---
 
+### Option C — Local Backend Development Without Docker (macOS / Linux / Windows)
+
+Recommended for open-source contributors developing on the backend or database schema.
+
+**Prerequisites:**
+- **Node.js 22+** and `npm`
+- **MariaDB 11.4+** running locally (with `utf8mb4` / `utf8mb4_unicode_ci`)
+
+**1. Initialize MariaDB:**
+Run [`db/schema.sql`](db/schema.sql) and [`db/seed.sql`](db/seed.sql) against your local MariaDB instance, and ensure a database user matching your `.env` credentials exists (e.g., user `wikibridge` / database `wikibridge` with privileges granted).
+
+**2. Configure environment variables:**
+
+- **macOS / Linux:**
+  ```bash
+  cd backend
+  cp .env.example .env
+  ```
+- **Windows (PowerShell):**
+  ```powershell
+  cd backend
+  Copy-Item .env.example .env
+  ```
+
+Edit `backend/.env` with your MariaDB credentials and optional `GEMINI_API_KEY`.
+
+**3. Install dependencies and start the dev server:**
 ```bash
-cd backend
-cp .env.example .env
-# Edit .env with your MariaDB credentials and GEMINI_API_KEY
 npm install
 npm run dev
 ```
 
-### Step C — Load the Manifest V3 Browser Extension
+Useful developer scripts in `backend/`:
+- `npm run dev` — Starts the backend in watch mode (`tsx watch src/index.ts`) on `http://localhost:4000`
+- `npm run typecheck` — Runs TypeScript type checking (`tsc --noEmit`)
+- `npm run build` — Compiles TypeScript to `backend/dist/`
+- `npm start` — Runs the compiled production server (`node dist/index.js`)
 
-No frontend build step is required — `extension/` uses native ES modules ready for unpacked loading:
-
-1. Open Chrome, Edge, or Brave and navigate to `chrome://extensions`.
-2. Enable **Developer mode** (top-right toggle).
-3. Click **Load unpacked** and select the `extension/` folder in this repository.
-4. Click the **Consensus** extension icon in the browser toolbar to open the persistent **Side Panel** (or click the **Consensus FI·SV·RU** button at the bottom-right of any `fi`, `sv`, or `ru` Wikipedia article to toggle the layout-preserving docked sidebar).
-
----
-
-## 3. Ranking Algorithm & Filtering Engine
-
-When an editor searches a topic (`GET /api/search?q=<topic>&filter=all|hard_fact|missing_citation|outdated_data`), the backend links articles across `fi.wikipedia.org`, `sv.wikipedia.org`, and `ru.wikipedia.org` via **Wikidata Q-IDs** (`wbgetentities`) and ranks the **Top 50** articles by a composite priority score $S \in [0, 100]$:
-
-$$
-S = 0.40 \cdot S_{\text{low\_sources}} + 0.35 \cdot S_{\text{discrepancy}} + 0.25 \cdot S_{\text{traffic}}
-$$
-
-1. **Low Source Density ($40\%$):**
-   $$S_{\text{low\_sources}} = \frac{100}{1 + \frac{\min(\text{refs}_{\text{fi}}, \text{refs}_{\text{sv}}, \text{refs}_{\text{ru}})}{14}}$$
-   Strongly prioritizes under-sourced articles (e.g., 0–10 `<ref>` tags) or severe cross-edition citation imbalances.
-2. **Discrepancy Severity ($35\%$):** Normalized `0..100` severity of detected cross-lingual conflicts (`hard_fact` numeric/chronological divergences, `missing_citation` / `{{Lähde}}` / `{{Källa behövs}}` / `{{Нет АИ}}` tags, and `outdated_data` staleness).
-3. **Article Traffic ($25\%$):** Log-scaled 30-day combined pageviews from the Wikimedia Pageviews REST API so high-readership articles surface ahead of zero-traffic pages.
+**4. Load the extension:**
+Follow **Option A** to load `extension/` into your browser. When you edit files inside `extension/`, click the **Reload** icon for Consensus on `chrome://extensions` to apply changes.
 
 ---
 
-## 4. MariaDB Schema & Indexing Highlights (`db/schema.sql`)
+## 6. Project Structure
 
-All tables use `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci` to handle Finnish (`ä`, `ö`), Swedish (`å`, `ä`, `ö`), and Russian Cyrillic (`А–Я`, `а–я`) accurately:
-
-- **`articles`**: Stores Wikidata `qid`, localized `fi`/`sv`/`ru` titles and URLs, parsed `<ref>` counts, 30-day pageviews, revision timestamps, mismatch filter booleans, and `priority_score`.
-  - `INDEX idx_ranking_metrics (source_count ASC, discrepancy_severity DESC, pageview_count DESC)`
-  - `INDEX idx_priority_ranking (priority_score DESC, pageview_count DESC)`
-  - Filter-specific composite indexes (`idx_filter_hard_fact`, `idx_filter_missing_citation`, `idx_filter_outdated_data`)
-  - `FULLTEXT INDEX ft_article_search (canonical_label, topic_keywords, fi_title, sv_title, ru_title)`
-- **`article_editions_content`**: Caches lead extracts, parsed infobox JSON, and extracted `<ref>` metadata per `(qid, lang)`.
-- **`discrepancies`**: Stores `mismatch_type`, `target_lang`, verbatim `disputed_snippet` for DOM matching, `agreement_matrix_json` (`LanguageAgreementMatrix`), `citation_gap_flag`, `donor_lang`, and `broken_link_detected`.
-- **`verified_sources`**: Stores academic metadata (`DOI`, `ISBN`, authors, venue, year, `dead_link_status`, Wayback `archive_url`), `confidence_score` (`high`/`medium`/`low`), and pre-rendered localized `<ref>` templates (`cite_template_fi`, `cite_template_sv`, `cite_template_ru`, `cite_template_en`).
-- **`topic_search_cache` & `external_api_cache`**: TTL-enforced (`expires_at`) caches keyed by normalized query or SHA-256 request digest to minimize external API calls.
+```text
+.
+├── extension/                  # Manifest V3 browser extension (no build step)
+│   ├── manifest.json           # MV3 config, permissions, side panel & content script registration
+│   ├── sidepanel.html          # Side Panel UI markup
+│   ├── icons/                  # Extension icons (16, 48, 128 px)
+│   └── src/
+│       ├── background/         # serviceWorker.js (tab navigation & highlight messaging)
+│       ├── content/            # contentScript.js & contentStyles.css (DOM matching & highlight)
+│       ├── shared/             # constants.js (17 langs), liveBrowserScanner.js, translator.js, demoFallback.js
+│       └── sidepanel/          # app.js & styles.css (dashboard, search, bookmarks, settings)
+├── backend/                    # Optional Node.js + Express + TypeScript API
+│   ├── Dockerfile
+│   ├── package.json
+│   ├── .env.example
+│   └── src/
+│       ├── routes/api.ts       # /api/health, /api/search, /api/articles/:qid/analyze, /api/verify-claim, /api/citations/format
+│       ├── services/           # MediaWiki, Gemini/heuristic comparator, academic verifier, link checker, citation formatter
+│       ├── db/                 # mysql2 connection pool & repository queries
+│       └── utils/              # Token-bucket rate limiters & retry helpers
+├── db/
+│   ├── schema.sql              # MariaDB 11.4 schema (InnoDB, utf8mb4_unicode_ci)
+│   └── seed.sql                # Reference cross-lingual seed data
+└── docker-compose.yml          # MariaDB + Backend API container orchestration
+```
 
 ---
 
-## 5. Navigation, Highlighting & Localized Citation Templates
+## 7. Backend API & Scoring Reference
 
-- **DOM Highlighting (`extension/src/content/contentScript.js`)**:
-  - Navigates the active tab to the target Wikipedia edition, locates the disputed passage via a 3-tier matcher (exact normalized text-walker across inline `<a>` tags, numeric/token overlap fallback, and section heading anchor), scrolls smoothly into view, highlights the claim in Vector-2022 red (`#fee7e6` background, `#d33` border), and mounts an inline verification card.
-- **Localized One-Click `<ref>` Templates (`backend/src/services/citationFormatter.ts`)**:
-  - **Finnish (`fi`)**: `{{Kirjaviite}}`, `{{Lehtiviite}}`, `{{Verkkoviite}}`
-  - **Swedish (`sv`)**: `{{Bokref}}`, `{{Tidskriftsref}}`, `{{Webbref}}`
-  - **Russian (`ru`)**: `{{Статья}}`, `{{Книга}}`, `{{Cite web}}`
-  - **Standard (`en`)**: `{{Cite journal}}`, `{{Cite book}}`, `{{Cite web}}`
-- **Editor Injection**:
-  - **Source Editor (`#wpTextbox1`)**: Locates the disputed sentence in wikitext (or current cursor), replaces any adjacent citation-needed template (`{{Lähde}}`, `{{Källa behövs}}`, `{{Нет АИ}}`) or appends `<ref name="...">...</ref>`, populates `#wpSummary`, and highlights the inserted wikitext for human review. If clicked from Read Mode, automatically transitions to `?action=edit` and injects on load.
-  - **VisualEditor (`.ve-ce-surface`)**: Inserts at the active VisualEditor cursor surface and copies to clipboard.
+### REST Endpoints (`http://localhost:4000/api`)
+- `GET /api/health` — Database connection status and active LLM/heuristic mode
+- `GET /api/search?q=<topic>&filter=all|hard_fact|missing_citation|outdated_data` — Cross-lingual topic search and ranked article summary
+- `GET /api/articles/:qid/analyze` — Detailed discrepancy report for a Wikidata Q-ID (e.g. `Q104318`)
+- `POST /api/verify-claim` — Crossref, OpenAlex, Semantic Scholar, and Google Books verification for a claim
+- `POST /api/citations/format` — Generates localized Wikipedia `<ref>` templates (`fi`, `sv`, `ru`, `en`)
+
+### Dashboard Spread Risk Scoring
+In the extension's **Top Risk Dashboard**, high-traffic articles are scored by combining log-scaled daily pageviews with detected issue count and maximum discrepancy severity:
+
+$$\text{SpreadRisk} = \operatorname{round}\!\left(\log_{10}(\max(10, \text{dailyViews})) \cdot \left(1.15 \cdot \text{issueCount} + 1.35 \cdot \frac{\text{severity}}{100}\right) \cdot 10\right)$$
