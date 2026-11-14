@@ -1,0 +1,770 @@
+/* ============================================================================
+   WikiBridge Minimal UI — Wikipedia Vector 2022
+   Fast, uncluttered view showing exact cross-lingual issues & Wikipedia jump.
+   ============================================================================ */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #ffffff;
+  color: #202122;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.wb-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.wb-header {
+  position: relative;
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #eaecf0;
+  padding: 11px 14px;
+  flex-shrink: 0;
+}
+
+.wb-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.wb-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wb-settings-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid #a2a9b1;
+  border-radius: 0;
+  background-color: #ffffff;
+  color: #54595d;
+  cursor: pointer;
+}
+
+.wb-settings-btn:hover,
+.wb-settings-btn[aria-expanded='true'] {
+  background-color: #eaecf0;
+  color: #202122;
+  border-color: #72777d;
+}
+
+.wb-settings-dropdown {
+  position: absolute;
+  top: 42px;
+  right: 14px;
+  left: 14px;
+  z-index: 50;
+  background-color: #ffffff;
+  border: 1px solid #a2a9b1;
+  padding: 10px 12px;
+}
+
+.wb-settings-section-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+.wb-settings-section-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #54595d;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.wb-settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.wb-link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #3366cc;
+  font-size: 11.5px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.wb-link-btn:hover {
+  text-decoration: underline;
+}
+
+.wb-settings-sep {
+  font-size: 11.5px;
+  color: #a2a9b1;
+}
+
+.wb-lang-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px 8px;
+}
+
+.wb-lang-option {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #202122;
+  cursor: pointer;
+  user-select: none;
+}
+
+.wb-flag-wrap {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #c8ccd1;
+  line-height: 0;
+}
+
+.wb-lang-option input[type='checkbox'],
+.wb-dynamic-toggle input[type='checkbox'] {
+  margin: 0;
+  accent-color: #3366cc;
+  cursor: pointer;
+}
+
+.wb-settings-divider {
+  border-top: 1px solid #eaecf0;
+  margin: 8px 0;
+}
+
+.wb-dynamic-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  color: #202122;
+  cursor: pointer;
+  user-select: none;
+}
+
+.wb-brand {
+  margin: 0;
+  font-family: 'Linux Libertine', 'Georgia', 'Times New Roman', serif;
+  font-size: 19px;
+  font-weight: normal;
+  color: #202122;
+}
+
+.wb-timing {
+  font-size: 11px;
+  color: #72777d;
+}
+
+.wb-search-row {
+  display: flex;
+  gap: 6px;
+}
+
+.wb-input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid #a2a9b1;
+  border-radius: 0;
+  background-color: #ffffff;
+  color: #202122;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.wb-input:focus {
+  outline: 1px solid #3366cc;
+  border-color: #3366cc;
+}
+
+.wb-btn {
+  height: 34px;
+  padding: 0 13px;
+  border: 1px solid #a2a9b1;
+  border-radius: 0;
+  background-color: #f8f9fa;
+  color: #202122;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.wb-btn:hover {
+  background-color: #eaecf0;
+}
+
+.wb-btn-primary {
+  background-color: #3366cc;
+  border-color: #3366cc;
+  color: #ffffff;
+}
+
+.wb-btn-primary:hover {
+  background-color: #2a4b8d;
+  border-color: #2a4b8d;
+}
+
+.wb-btn-find {
+  width: 100%;
+  height: 36px;
+  margin-top: 10px;
+  background-color: #3366cc;
+  border: 1px solid #3366cc;
+  border-radius: 0;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  font-family: inherit;
+}
+
+.wb-btn-find:hover {
+  background-color: #2a4b8d;
+  border-color: #2a4b8d;
+}
+
+.wb-back-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-bottom: 10px;
+  color: #3366cc;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.wb-back-btn:hover {
+  text-decoration: underline;
+}
+
+.wb-feedback {
+  padding: 8px 14px;
+  background-color: #fee7e6;
+  border-bottom: 1px solid #d33;
+  color: #202122;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.wb-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+}
+
+.wb-section-label {
+  font-size: 11.5px;
+  color: #54595d;
+  margin-bottom: 9px;
+}
+
+.wb-loading {
+  padding: 12px;
+  background-color: #f8f9fa;
+  border: 1px solid #eaecf0;
+  color: #54595d;
+  font-size: 12.5px;
+}
+
+.wb-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ============================================================================
+   Article List Card — Shows Title, Clear Issue Tags, and Reference Counts
+   ============================================================================ */
+.wb-article-item {
+  display: block;
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid #c8ccd1;
+  background-color: #ffffff;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
+.wb-article-item:hover {
+  border-color: #3366cc;
+  background-color: #f8f9fa;
+}
+
+.wb-article-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wb-article-name {
+  margin: 0;
+  font-family: 'Linux Libertine', 'Georgia', 'Times New Roman', serif;
+  font-size: 16.5px;
+  font-weight: normal;
+  color: #202122;
+  line-height: 1.25;
+}
+
+.wb-mistake-pill {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  background-color: #fee7e6;
+  border: 1px solid #d33;
+  color: #b32424;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.wb-mistake-pill--ok {
+  background-color: #eaf3ee;
+  border-color: #14866d;
+  color: #14866d;
+}
+
+/* Explicit Issue Badges on Search Results */
+.wb-issue-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.wb-issue-tag {
+  display: inline-block;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  border: 1px solid #a2a9b1;
+  background-color: #f8f9fa;
+  color: #202122;
+}
+
+.wb-issue-tag--conflict {
+  background-color: #fee7e6;
+  border-color: #d33;
+  color: #b32424;
+}
+
+.wb-issue-tag--refs {
+  background-color: #fef6e7;
+  border-color: #ac6600;
+  color: #7a4800;
+}
+
+.wb-issue-tag--outdated {
+  background-color: #f8f9fa;
+  border-color: #72777d;
+  color: #363b3f;
+}
+
+.wb-issue-tag--pov {
+  background-color: #f5effa;
+  border-color: #7b3fa0;
+  color: #5b257d;
+}
+
+/* Compact Reference Comparison Line on Card */
+.wb-article-refs {
+  margin-top: 7px;
+  font-size: 11.5px;
+  color: #54595d;
+}
+
+.wb-ref-low {
+  color: #b32424;
+  font-weight: 700;
+}
+
+/* ============================================================================
+   Detail View — Reference Strip + Clear Issue Cards
+   ============================================================================ */
+.wb-detail-title {
+  margin: 0 0 10px 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #a2a9b1;
+  font-family: 'Linux Libertine', 'Georgia', 'Times New Roman', serif;
+  font-size: 21px;
+  font-weight: normal;
+  color: #202122;
+}
+
+.wb-ref-card {
+  border: 1px solid #a2a9b1;
+  background-color: #ffffff;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+
+.wb-ref-card.is-expanded {
+  padding: 10px;
+  margin-bottom: 12px;
+}
+
+.wb-ref-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wb-ref-toggle:hover .wb-ref-title {
+  color: #3366cc;
+}
+
+.wb-ref-title {
+  font-family: 'Linux Libertine', 'Georgia', 'Times New Roman', serif;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #202122;
+  line-height: 1.3;
+  transition: color 0.15s ease;
+}
+
+.wb-ref-chevron {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1;
+  color: #54595d;
+  transition: transform 0.15s ease;
+}
+
+.wb-ref-card.is-expanded .wb-ref-chevron {
+  transform: rotate(90deg);
+}
+
+.wb-ref-body {
+  display: none;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #eaecf0;
+}
+
+.wb-ref-card.is-expanded .wb-ref-body {
+  display: block;
+}
+
+.wb-ref-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.wb-ref-box {
+  padding: 6px 8px;
+  background-color: #f8f9fa;
+  border: 1px solid #eaecf0;
+  font-size: 11.5px;
+  color: #202122;
+  text-align: left;
+  font-family: inherit;
+}
+
+.wb-ref-box--clickable {
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.wb-ref-box--clickable:hover {
+  border-color: #3366cc;
+  background-color: #eef3ff;
+}
+
+.wb-ref-box--has-issue {
+  border-bottom: 2px solid #d33;
+}
+
+.wb-ref-box--low {
+  background-color: #fef6e7;
+  border-color: #ac6600;
+}
+
+.wb-ref-box--missing {
+  color: #72777d;
+  background-color: #f8f9fa;
+}
+
+.wb-ref-box-lang {
+  font-weight: 700;
+  display: block;
+  font-size: 11px;
+  color: #54595d;
+}
+
+.wb-ref-box--low .wb-ref-box-lang {
+  color: #7a4800;
+}
+
+.wb-ref-box-val {
+  font-weight: 600;
+}
+
+/* Focused Issue Card */
+.wb-mistake-card {
+  border: 1px solid #a2a9b1;
+  border-left: 3px solid #d33;
+  background-color: #ffffff;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease, padding 0.15s ease;
+}
+
+.wb-mistake-card.is-expanded {
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.wb-mistake-card--focused {
+  border-color: #3366cc;
+  box-shadow: 0 0 0 3px rgba(51, 102, 204, 0.28);
+}
+
+.wb-mistake-card--refs {
+  border-left-color: #ac6600;
+}
+
+.wb-mistake-card--pov {
+  border-left-color: #7b3fa0;
+}
+
+.wb-mistake-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wb-mistake-toggle:hover .wb-mistake-heading {
+  color: #3366cc;
+}
+
+.wb-mistake-chevron {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1;
+  color: #54595d;
+  transition: transform 0.15s ease;
+}
+
+.wb-mistake-card.is-expanded .wb-mistake-chevron {
+  transform: rotate(90deg);
+}
+
+.wb-mistake-body {
+  display: none;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #eaecf0;
+}
+
+.wb-mistake-card.is-expanded .wb-mistake-body {
+  display: block;
+}
+
+.wb-mistake-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.wb-issue-type-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background-color: #fee7e6;
+  border: 1px solid #d33;
+  color: #b32424;
+}
+
+.wb-issue-type-badge--refs {
+  background-color: #fef6e7;
+  border-color: #ac6600;
+  color: #7a4800;
+}
+
+.wb-issue-type-badge--pov {
+  background-color: #f5effa;
+  border-color: #7b3fa0;
+  color: #5b257d;
+}
+
+.wb-issue-target-lang {
+  font-size: 11.5px;
+  color: #54595d;
+  font-weight: 600;
+}
+
+.wb-issue-target-lang--link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  color: #3366cc;
+  cursor: pointer;
+  text-align: left;
+}
+
+.wb-issue-target-lang--link:hover {
+  text-decoration: underline;
+}
+
+.wb-mistake-heading {
+  margin: 0;
+  font-family: 'Linux Libertine', 'Georgia', 'Times New Roman', serif;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #202122;
+  line-height: 1.3;
+  transition: color 0.15s ease;
+}
+
+.wb-mistake-card.is-expanded .wb-mistake-heading {
+  font-size: 16px;
+}
+
+.wb-mistake-desc {
+  margin: 0 0 8px 0;
+  font-size: 12.5px;
+  color: #202122;
+}
+
+.wb-claims-compare {
+  border: 1px solid #eaecf0;
+  background-color: #f8f9fa;
+  margin: 8px 0;
+  font-size: 12px;
+}
+
+.wb-claim-line {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  gap: 8px;
+  padding: 5px 8px;
+  border: none;
+  border-bottom: 1px solid #eaecf0;
+  background: transparent;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.wb-claim-line--clickable {
+  cursor: pointer;
+}
+
+.wb-claim-line--clickable:hover {
+  background-color: #eef3ff;
+}
+
+.wb-claim-line--clickable:hover .wb-claim-code {
+  text-decoration: underline;
+}
+
+.wb-claim-line:last-child {
+  border-bottom: none;
+}
+
+.wb-claim-line--flagged {
+  background-color: #fee7e6;
+}
+
+.wb-claim-line--flagged.wb-claim-line--clickable:hover {
+  background-color: #fbd5d3;
+}
+
+.wb-claim-code {
+  width: 24px;
+  flex-shrink: 0;
+  font-weight: 700;
+  color: #3366cc;
+}
+
+.wb-claim-code.target {
+  color: #b32424;
+}
+
+.wb-claim-text {
+  flex: 1;
+}
+
+.wb-snippet-preview {
+  padding: 6px 8px;
+  background-color: #f8f9fa;
+  border-left: 2px solid #a2a9b1;
+  font-size: 11.5px;
+  color: #363b3f;
+  margin-top: 6px;
+}
+
+.wb-snippet-translation {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed #d8dce0;
+  color: #202122;
+  font-weight: 500;
+}
+
+.wb-empty {
+  padding: 14px;
+  background-color: #f8f9fa;
+  border: 1px solid #eaecf0;
+  color: #54595d;
+  font-size: 13px;
+}
