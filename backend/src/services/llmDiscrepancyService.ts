@@ -1,9 +1,15 @@
-import { GoogleGenAI, Type, type Schema } from '@google/genai';
+import crypto from 'node:crypto';
+import { GoogleGenAI, ThinkingLevel, Type, type Schema } from '@google/genai';
 import { config } from '../config.js';
 import type {
+  EditionClaimStatus,
   EditionContentRecord,
   LanguageAgreementMatrix,
   MismatchType,
+  MultiLangEditionInput,
+  SemanticAnalysisResponse,
+  SemanticDiscrepancyRecord,
+  SemanticMismatchType,
   WikiLang,
 } from '../types.js';
 
@@ -34,72 +40,6 @@ const LANG_FULL_NAME: Record<WikiLang, string> = {
   fi: 'Finnish',
   sv: 'Swedish',
   ru: 'Russian',
-};
-
-const LLM_DISCREPANCY_SCHEMA: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    overallSummary: {
-      type: Type.STRING,
-    },
-    discrepancies: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          mismatchType: {
-            type: Type.STRING,
-            enum: ['hard_fact', 'missing_citation', 'outdated_data'],
-          },
-          issueLabel: {
-            type: Type.STRING,
-            enum: [
-              'Different information',
-              'Much fewer references',
-              'Missing reference',
-              'Outdated information',
-            ],
-          },
-          targetLang: {
-            type: Type.STRING,
-            enum: ['fi', 'sv', 'ru'],
-          },
-          claimTopic: {
-            type: Type.STRING,
-          },
-          summary: {
-            type: Type.STRING,
-          },
-          disputedSnippet: {
-            type: Type.STRING,
-            description:
-              'Exact verbatim phrase (5 to 16 words) copied from targetLang extract so the browser can scroll to and highlight it.',
-          },
-          suggestedCorrection: {
-            type: Type.STRING,
-          },
-          fiClaimValue: { type: Type.STRING },
-          svClaimValue: { type: Type.STRING },
-          ruClaimValue: { type: Type.STRING },
-          severityScore: { type: Type.INTEGER },
-        },
-        required: [
-          'mismatchType',
-          'issueLabel',
-          'targetLang',
-          'claimTopic',
-          'summary',
-          'disputedSnippet',
-          'suggestedCorrection',
-          'fiClaimValue',
-          'svClaimValue',
-          'ruClaimValue',
-          'severityScore',
-        ],
-      },
-    },
-  },
-  required: ['overallSummary', 'discrepancies'],
 };
 
 let aiClient: GoogleGenAI | null = null;
@@ -468,106 +408,545 @@ export function runHeuristicDiscrepancyScan(
   };
 }
 
-export async function compareEditionsSemantically(
-  canonicalLabel: string,
-  editions: Map<WikiLang, EditionContentRecord>
-): Promise<CrossLingualComparisonResult> {
-  const heuristic = runHeuristicDiscrepancyScan(canonicalLabel, editions);
-  const ai = getAiClient();
-  if (!ai) {
-    return heuristic;
+const MULTI_LANG_SEMANTIC_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    overallSummary: {
+      type: Type.STRING,
+      description: '1 concise English sentence (max 25 words) summarizing how editions compare.',
+    },
+    discrepancies: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          mismatchType: {
+            type: Type.STRING,
+            enum: ['hard_fact', 'missing_citation', 'outdated_data', 'neutrality_bias'],
+          },
+          issueLabel: {
+            type: Type.STRING,
+            enum: [
+              'Different information',
+              'Much fewer references',
+              'Missing reference',
+              'Not neutral (emotional tone)',
+              'Outdated information',
+            ],
+          },
+          targetLang: {
+            type: Type.STRING,
+          },
+          claimTopic: {
+            type: Type.STRING,
+            description: 'Short 3-7 word English heading.',
+          },
+          summary: {
+            type: Type.STRING,
+            description: '1 concise English sentence (max 22 words).',
+          },
+          disputedSnippet: {
+            type: Type.STRING,
+            description: 'Exact verbatim 5-12 word phrase from targetLang extract.',
+          },
+          highlightPhrase: {
+            type: Type.STRING,
+            description: 'Exact 2-6 word differing phrase inside disputedSnippet.',
+          },
+          snippetEnglishTranslation: {
+            type: Type.STRING,
+            description: 'Concise English translation of disputedSnippet.',
+          },
+          suggestedCorrection: {
+            type: Type.STRING,
+            description: '1 short English fix suggestion (max 18 words).',
+          },
+          severityScore: {
+            type: Type.INTEGER,
+          },
+          claims: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                lang: { type: Type.STRING },
+                claimValue: {
+                  type: Type.STRING,
+                  description: 'Ultra-brief 2-7 word English summary.',
+                },
+                hasCitation: { type: Type.BOOLEAN },
+              },
+              required: ['lang', 'claimValue', 'hasCitation'],
+            },
+          },
+        },
+        required: [
+          'mismatchType',
+          'issueLabel',
+          'targetLang',
+          'claimTopic',
+          'summary',
+          'disputedSnippet',
+          'highlightPhrase',
+          'snippetEnglishTranslation',
+          'suggestedCorrection',
+          'severityScore',
+          'claims',
+        ],
+      },
+    },
+  },
+  required: ['overallSummary', 'discrepancies'],
+};
+
+const semanticCache = new Map<string, { expiresAt: number; data: SemanticAnalysisResponse }>();
+
+const intlLangDisplay =
+  typeof Intl !== 'undefined' && Intl.DisplayNames
+    ? new Intl.DisplayNames(['en'], { type: 'language' })
+    : null;
+
+function resolveLanguageDisplayName(code: string, provided?: string): string {
+  if (provided && provided.trim()) return provided.trim();
+  const lower = code.toLowerCase();
+  if (lower in LANG_FULL_NAME) {
+    return LANG_FULL_NAME[lower as WikiLang];
+  }
+  try {
+    const resolved = intlLangDisplay?.of(lower);
+    if (resolved && resolved.toLowerCase() !== lower) return resolved;
+  } catch {
+    // Ignore unsupported subtags
+  }
+  return code.toUpperCase();
+}
+
+function normalizeIssueLabelForSemantic(
+  mismatchType: SemanticMismatchType,
+  rawLabel: string
+): string {
+  const allowed = new Set([
+    'Different information',
+    'Much fewer references',
+    'Missing reference',
+    'Not neutral (emotional tone)',
+    'Outdated information',
+  ]);
+  if (allowed.has(rawLabel)) return rawLabel;
+  if (mismatchType === 'neutrality_bias') return 'Not neutral (emotional tone)';
+  if (mismatchType === 'outdated_data') return 'Outdated information';
+  if (mismatchType === 'missing_citation') return 'Missing reference';
+  return 'Different information';
+}
+
+function resolveTargetLangCode(
+  rawTarget: string,
+  editions: MultiLangEditionInput[]
+): string | null {
+  const normalized = (rawTarget || '').trim().toLowerCase();
+  const exact = editions.find((e) => e.lang.toLowerCase() === normalized);
+  if (exact) return exact.lang.toLowerCase();
+
+  const byName = editions.find(
+    (e) => resolveLanguageDisplayName(e.lang, e.langName).toLowerCase() === normalized
+  );
+  return byName ? byName.lang.toLowerCase() : null;
+}
+
+function selectEditionsForSemanticPrompt(
+  editions: MultiLangEditionInput[],
+  maxEditions = 6
+): MultiLangEditionInput[] {
+  if (editions.length <= maxEditions) return editions;
+
+  const picked = new Map<string, MultiLangEditionInput>();
+  // Keep flagged/low-ref editions first so small under-sourced editions aren't dropped
+  const withRefs = editions.filter((e) => typeof e.refCount === 'number');
+  const lowestRef = withRefs.sort((a, b) => (a.refCount ?? 0) - (b.refCount ?? 0))[0];
+  if (lowestRef) picked.set(lowestRef.lang, lowestRef);
+
+  for (const ed of editions) {
+    if (picked.size >= maxEditions) break;
+    if (ed.hasNpovTemplate || (ed.citationNeededTags ?? 0) > 0) {
+      picked.set(ed.lang, ed);
+    }
   }
 
-  const formatEd = (lang: WikiLang, name: string): string => {
-    const ed = editions.get(lang);
-    if (!ed) return `=== ${name} (${lang}) ===\nMISSING EDITION.`;
-    return `=== ${name} (${lang}) | Title: "${ed.title}" | References: ${ed.refCount} | [citation needed]: ${ed.citationNeededTags} | Last updated: ${ed.lastRevisionAt?.slice(0, 10) || 'unknown'} ===\n${ed.leadExtract.slice(0, 2200)}`;
-  };
+  const byExtractLen = [...editions].sort((a, b) => b.extract.length - a.extract.length);
+  for (const ed of byExtractLen) {
+    if (picked.size >= maxEditions) break;
+    if (!picked.has(ed.lang)) picked.set(ed.lang, ed);
+  }
 
-  const prompt = `Compare Finnish (fi), Swedish (sv), and Russian (ru) Wikipedia articles for "${canonicalLabel}".
-Find concrete mistakes and differences and label each with a clear "issueLabel":
-- "Different information": conflicting facts, numbers, dates, casualty/population figures, or claims.
-- "Much fewer references": one language has far fewer references than the others.
-- "Missing reference": unsourced claims contradicted or sourced elsewhere.
-- "Outdated information": one language has old figures while another was updated.
+  return Array.from(picked.values());
+}
 
-IMPORTANT: "disputedSnippet" MUST be an exact verbatim 5-to-15 word phrase in the original language of "targetLang" copied directly from that edition's text below!
+function buildFastThinkingConfig(modelName: string) {
+  const lower = modelName.toLowerCase();
+  if (lower.includes('gemini-3')) {
+    return { thinkingLevel: ThinkingLevel.LOW };
+  }
+  if (lower.includes('gemini-2.5')) {
+    return { thinkingBudget: 0 };
+  }
+  return undefined;
+}
 
-${formatEd('fi', 'FINNISH')}
+/**
+ * Runs Gemini semantic cross-lingual comparison across Wikipedia language
+ * editions, detecting paraphrased factual conflicts, non-neutral framing,
+ * citation imbalances, and outdated claims.
+ */
+export async function analyzeEditionsSemantically(params: {
+  qid?: string;
+  canonicalLabel: string;
+  editions: MultiLangEditionInput[];
+  forceRefresh?: boolean;
+}): Promise<SemanticAnalysisResponse> {
+  const qid = (params.qid || '').trim().toUpperCase() || 'CUSTOM';
+  const validEditions = params.editions
+    .map((e) => ({
+      ...e,
+      lang: e.lang.trim().toLowerCase(),
+      extract: (e.extract || '').trim(),
+    }))
+    .filter((e) => Boolean(e.lang && e.title));
 
-${formatEd('sv', 'SWEDISH')}
+  if (validEditions.length < 2) {
+    return {
+      qid,
+      canonicalLabel: params.canonicalLabel,
+      overallSummary: 'At least two Wikipedia language editions are required for semantic comparison.',
+      issueBadges: [],
+      discrepancies: [],
+      analyzedWithLlm: false,
+      model: config.geminiModel,
+      error: 'Insufficient language editions',
+    };
+  }
 
-${formatEd('ru', 'RUSSIAN')}`;
+  const ai = getAiClient();
+  if (!ai) {
+    return {
+      qid,
+      canonicalLabel: params.canonicalLabel,
+      overallSummary: 'Gemini semantic analysis is disabled (GEMINI_API_KEY not configured).',
+      issueBadges: [],
+      discrepancies: [],
+      analyzedWithLlm: false,
+      model: config.geminiModel,
+      error: 'GEMINI_API_KEY not configured',
+    };
+  }
+
+  // Keep prompt compact (max 5 editions, 1000-1200 chars/edition) for low-latency responses
+  const editionsWithContext = selectEditionsForSemanticPrompt(validEditions, 5);
+  const perEditionCharBudget = editionsWithContext.length <= 3 ? 1200 : 900;
+
+  const cacheFingerprint = crypto
+    .createHash('sha256')
+    .update(
+      editionsWithContext
+        .map((e) => `${e.lang}:${e.title}:${e.extract.slice(0, perEditionCharBudget)}:${e.refCount ?? ''}`)
+        .sort()
+        .join('|')
+    )
+    .digest('hex')
+    .slice(0, 16);
+  const cacheKey = `${qid}:${config.geminiModel}:${cacheFingerprint}`;
+
+  if (!params.forceRefresh) {
+    const cached = semanticCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
+  }
+
+  const formattedEditions = editionsWithContext
+    .map((ed) => {
+      const name = resolveLanguageDisplayName(ed.lang, ed.langName);
+      const refs = ed.refCount !== undefined ? `refs=${ed.refCount}` : 'refs=?';
+      const cn = ed.citationNeededTags ? ` cn=${ed.citationNeededTags}` : '';
+      const npov = ed.hasNpovTemplate ? ' NPOV_TAG' : '';
+      const rev = ed.lastRevAt ? ` rev=${ed.lastRevAt.slice(0, 10)}` : '';
+      const body = ed.extract
+        ? ed.extract.slice(0, perEditionCharBudget)
+        : '(No extract available)';
+      return `[${ed.lang} | ${name} | "${ed.title}" | ${refs}${cn}${npov}${rev}]\n${body}`;
+    })
+    .join('\n\n');
+
+  const langCodesList = editionsWithContext.map((e) => e.lang).join(', ');
+  const prompt = `Cross-lingual Wikipedia fact-checker for "${params.canonicalLabel}" (${qid}).
+Compare these ${editionsWithContext.length} editions (${langCodesList}) semantically and return at most 3 highest-impact genuine discrepancies (or [] if aligned).
+
+Categories:
+- "hard_fact" / "Different information": contradictory dates, numbers, attributions, or factual claims.
+- "neutrality_bias" / "Not neutral (emotional tone)": editorial POV bias or loaded framing (ignore neutral quotes).
+- "missing_citation" / "Much fewer references" or "Missing reference": severe citation gap or [citation needed] tag.
+- "outdated_data" / "Outdated information": stale stats or lagging revision.
+
+Rules (keep all text ultra-concise):
+- "targetLang" must be one of: ${langCodesList}.
+- "disputedSnippet": exact verbatim 5-10 word substring from targetLang's text.
+- "highlightPhrase": exact 2-5 word differing value/phrase inside disputedSnippet.
+- "snippetEnglishTranslation": short English translation of disputedSnippet.
+- "claims": 2-7 word English summary per compared lang.
+
+${formattedEditions}`;
 
   try {
+    const thinkingConfig = buildFastThinkingConfig(config.geminiModel);
     const response = await ai.models.generateContent({
       model: config.geminiModel,
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
-        responseSchema: LLM_DISCREPANCY_SCHEMA,
+        responseSchema: MULTI_LANG_SEMANTIC_SCHEMA,
         temperature: 0.1,
+        maxOutputTokens: 1500,
+        ...(thinkingConfig ? { thinkingConfig } : {}),
       },
     });
 
     const rawText = response.text;
-    if (!rawText) return heuristic;
+    if (!rawText) {
+      return {
+        qid,
+        canonicalLabel: params.canonicalLabel,
+        overallSummary: 'Gemini returned an empty response.',
+        issueBadges: [],
+        discrepancies: [],
+        analyzedWithLlm: false,
+        model: config.geminiModel,
+        error: 'Empty model response',
+      };
+    }
 
-    interface LlmPayload {
+    interface LlmSemanticPayload {
       overallSummary: string;
       discrepancies: Array<{
-        mismatchType: MismatchType;
+        mismatchType: SemanticMismatchType;
         issueLabel: string;
-        targetLang: WikiLang;
+        targetLang: string;
         claimTopic: string;
         summary: string;
         disputedSnippet: string;
+        highlightPhrase: string;
+        snippetEnglishTranslation: string;
         suggestedCorrection: string;
-        fiClaimValue: string;
-        svClaimValue: string;
-        ruClaimValue: string;
         severityScore: number;
+        claims: Array<{
+          lang: string;
+          claimValue: string;
+          hasCitation: boolean;
+        }>;
       }>;
     }
 
-    const parsed = JSON.parse(rawText) as LlmPayload;
-    if (!parsed.discrepancies || parsed.discrepancies.length === 0) {
-      return heuristic;
+    const parsed = JSON.parse(rawText) as LlmSemanticPayload;
+    const rawList = Array.isArray(parsed.discrepancies) ? parsed.discrepancies : [];
+
+    const discrepancies: SemanticDiscrepancyRecord[] = [];
+    for (const d of rawList) {
+      const targetLang = resolveTargetLangCode(d.targetLang, editionsWithContext);
+      if (!targetLang) continue;
+
+      const mismatchType: SemanticMismatchType = (
+        ['hard_fact', 'missing_citation', 'outdated_data', 'neutrality_bias'] as const
+      ).includes(d.mismatchType)
+        ? d.mismatchType
+        : 'hard_fact';
+
+      const issueLabel = normalizeIssueLabelForSemantic(mismatchType, d.issueLabel);
+
+      const claimsMap: Record<string, EditionClaimStatus> = {};
+      for (const c of Array.isArray(d.claims) ? d.claims : []) {
+        const cLang = resolveTargetLangCode(c.lang, editionsWithContext);
+        if (!cLang || !c.claimValue) continue;
+        claimsMap[cLang] = {
+          value: c.claimValue.trim(),
+          hasCitation: Boolean(c.hasCitation),
+          citationStatus: c.hasCitation ? 'valid' : 'missing',
+        };
+      }
+
+      // Ensure targetLang is always represented in claimsMap if omitted
+      if (!claimsMap[targetLang]) {
+        claimsMap[targetLang] = {
+          value: d.summary || issueLabel,
+          hasCitation: mismatchType !== 'missing_citation',
+          citationStatus: mismatchType === 'missing_citation' ? 'missing' : 'valid',
+        };
+      }
+
+      const consensusGroup = editionsWithContext
+        .map((e) => e.lang)
+        .filter((l) => l !== targetLang && claimsMap[l]?.hasCitation);
+
+      const cleanSnippet = (d.disputedSnippet || '').trim();
+      const cleanHighlight = (d.highlightPhrase || '').trim();
+      const cleanTranslation = (d.snippetEnglishTranslation || '').trim();
+
+      discrepancies.push({
+        id: discrepancies.length + 1,
+        qid,
+        mismatchType,
+        issueLabel,
+        targetLang,
+        claimTopic: (d.claimTopic || issueLabel).trim(),
+        summary: (d.summary || '').trim(),
+        disputedSnippet: cleanSnippet,
+        highlightPhrase: cleanHighlight || null,
+        snippetEnglishTranslation:
+          targetLang === 'en' ? null : cleanTranslation || null,
+        sectionHeading: null,
+        lineHint: 1,
+        suggestedCorrection: (d.suggestedCorrection || '').trim(),
+        agreementMatrix: {
+          consensusGroup,
+          outlierGroup: [targetLang],
+          matrixLabel: issueLabel,
+          claims: claimsMap,
+        },
+        citationGapFlag:
+          issueLabel === 'Much fewer references' || issueLabel === 'Missing reference',
+        donorLang: consensusGroup[0] || null,
+        severityScore: Math.max(30, Math.min(99, Math.round(Number(d.severityScore) || 75))),
+        confidenceLevel: Number(d.severityScore) >= 78 ? 'high' : 'medium',
+        confidenceScore: Math.min(95, Math.max(45, Math.round(Number(d.severityScore) || 75))),
+        verifiedSources: [],
+      });
     }
 
-    const mapped: DetectedRawDiscrepancy[] = parsed.discrepancies.map((d) => ({
-      mismatchType: d.mismatchType,
-      issueLabel: d.issueLabel || 'Different information',
-      targetLang: d.targetLang,
-      claimTopic: d.claimTopic,
-      summary: d.summary,
-      disputedSnippet: d.disputedSnippet,
-      sectionHeading: null,
-      lineHint: null,
-      suggestedCorrection: d.suggestedCorrection,
-      agreementMatrix: {
-        consensusGroup: [],
-        outlierGroup: [d.targetLang],
-        matrixLabel: d.issueLabel,
-        claims: {
-          fi: { value: d.fiClaimValue, hasCitation: true, citationStatus: 'valid' },
-          sv: { value: d.svClaimValue, hasCitation: true, citationStatus: 'valid' },
-          ru: { value: d.ruClaimValue, hasCitation: true, citationStatus: 'valid' },
-        },
-      },
-      citationGapFlag: d.issueLabel === 'Much fewer references',
-      donorLang: null,
-      severityScore: Math.max(30, Math.min(99, Number(d.severityScore) || 75)),
-    }));
+    const issueBadges = Array.from(
+      new Set(
+        discrepancies.map((d) =>
+          d.issueLabel === 'Not neutral (emotional tone)' ? 'Not neutral' : d.issueLabel
+        )
+      )
+    );
 
-    const badges = Array.from(new Set(mapped.map((m) => m.issueLabel)));
-    return {
-      overallSummary: parsed.overallSummary,
-      issueBadges: badges,
-      discrepancies: mapped,
+    const result: SemanticAnalysisResponse = {
+      qid,
+      canonicalLabel: params.canonicalLabel,
+      overallSummary:
+        (parsed.overallSummary || '').trim() ||
+        (discrepancies.length > 0
+          ? `Gemini detected ${discrepancies.length} semantic issue(s) across ${editionsWithContext.length} editions.`
+          : `No major semantic discrepancies detected across ${editionsWithContext.length} editions.`),
+      issueBadges,
+      discrepancies,
       analyzedWithLlm: true,
+      model: config.geminiModel,
     };
-  } catch {
+
+    if (semanticCache.size >= 200) {
+      const oldestKey = semanticCache.keys().next().value;
+      if (oldestKey) semanticCache.delete(oldestKey);
+    }
+    semanticCache.set(cacheKey, {
+      expiresAt: Date.now() + config.searchCacheTtlSeconds * 1000,
+      data: result,
+    });
+
+    return result;
+  } catch (err) {
+    return {
+      qid,
+      canonicalLabel: params.canonicalLabel,
+      overallSummary: 'Gemini semantic analysis failed.',
+      issueBadges: [],
+      discrepancies: [],
+      analyzedWithLlm: false,
+      model: config.geminiModel,
+      error: err instanceof Error ? err.message : 'Gemini request failed',
+    };
+  }
+}
+
+export async function compareEditionsSemantically(
+  canonicalLabel: string,
+  editions: Map<WikiLang, EditionContentRecord>
+): Promise<CrossLingualComparisonResult> {
+  const heuristic = runHeuristicDiscrepancyScan(canonicalLabel, editions);
+  if (!getAiClient()) {
     return heuristic;
   }
+
+  const editionInputs: MultiLangEditionInput[] = (['fi', 'sv', 'ru'] as WikiLang[])
+    .map((lang) => {
+      const ed = editions.get(lang);
+      if (!ed) return null;
+      return {
+        lang,
+        langName: LANG_FULL_NAME[lang],
+        title: ed.title,
+        url: ed.articleUrl,
+        extract: ed.leadExtract,
+        refCount: ed.refCount,
+        citationNeededTags: ed.citationNeededTags,
+        lastRevAt: ed.lastRevisionAt,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
+
+  const semantic = await analyzeEditionsSemantically({
+    canonicalLabel,
+    editions: editionInputs,
+  });
+
+  if (!semantic.analyzedWithLlm || semantic.discrepancies.length === 0) {
+    return heuristic;
+  }
+
+  const trilingualLangs = new Set<WikiLang>(['fi', 'sv', 'ru']);
+  const mapped: DetectedRawDiscrepancy[] = semantic.discrepancies
+    .filter((d) => trilingualLangs.has(d.targetLang as WikiLang))
+    .map((d) => {
+      const targetLang = d.targetLang as WikiLang;
+      const mismatchType: MismatchType =
+        d.mismatchType === 'neutrality_bias' ? 'hard_fact' : d.mismatchType;
+      const claims: Record<WikiLang, EditionClaimStatus> = {
+        fi: d.agreementMatrix.claims.fi || { value: 'N/A', hasCitation: true, citationStatus: 'valid' },
+        sv: d.agreementMatrix.claims.sv || { value: 'N/A', hasCitation: true, citationStatus: 'valid' },
+        ru: d.agreementMatrix.claims.ru || { value: 'N/A', hasCitation: true, citationStatus: 'valid' },
+      };
+
+      const matrix: LanguageAgreementMatrix = {
+        consensusGroup: d.agreementMatrix.consensusGroup.filter((l): l is WikiLang =>
+          trilingualLangs.has(l as WikiLang)
+        ),
+        outlierGroup: [targetLang],
+        matrixLabel: d.issueLabel,
+        claims,
+      };
+
+      return {
+        mismatchType,
+        issueLabel: d.issueLabel === 'Not neutral (emotional tone)' ? 'Different information' : d.issueLabel,
+        targetLang,
+        claimTopic: d.claimTopic,
+        summary: d.summary,
+        disputedSnippet: d.disputedSnippet,
+        sectionHeading: null,
+        lineHint: null,
+        suggestedCorrection: d.suggestedCorrection,
+        agreementMatrix: matrix,
+        citationGapFlag: d.citationGapFlag,
+        donorLang: d.donorLang && trilingualLangs.has(d.donorLang as WikiLang) ? (d.donorLang as WikiLang) : null,
+        severityScore: d.severityScore,
+      };
+    });
+
+  if (mapped.length === 0) {
+    return heuristic;
+  }
+
+  return {
+    overallSummary: semantic.overallSummary,
+    issueBadges: Array.from(new Set(mapped.map((m) => m.issueLabel))),
+    discrepancies: mapped,
+    analyzedWithLlm: true,
+  };
 }

@@ -386,3 +386,82 @@ export async function fetchArticlePageviews30d(
 ): Promise<number> {
   return 0;
 }
+
+const VALID_WIKI_LANG_RE = /^[a-z]{2,3}(?:-[a-z]{2,4})?$/;
+
+/**
+ * Fetches a Wikipedia edition's plain-text lead extract and revision timestamp
+ * for any language code (used to hydrate multi-language semantic analysis when
+ * the caller does not already have extract text).
+ */
+export async function fetchLeadExtractForEdition(
+  lang: string,
+  title: string
+): Promise<{
+  title: string;
+  extract: string;
+  refCount: number;
+  lastRevAt: string | null;
+} | null> {
+  const cleanLang = lang.trim().toLowerCase();
+  const cleanTitle = title.trim();
+  if (!VALID_WIKI_LANG_RE.test(cleanLang) || !cleanTitle) {
+    return null;
+  }
+
+  try {
+    const params = new URLSearchParams({
+      action: 'query',
+      titles: cleanTitle,
+      prop: 'extracts|revisions',
+      exintro: '1',
+      explaintext: '1',
+      rvprop: 'timestamp|content',
+      rvslots: 'main',
+      redirects: '1',
+      format: 'json',
+      formatversion: '2',
+    });
+
+    const url = `https://${cleanLang}.wikipedia.org/w/api.php?${params.toString()}`;
+    const res = await fetchWithRetry(
+      url,
+      { headers: { 'User-Agent': config.wikimediaUserAgent } },
+      { timeoutMs: 6500, limiter: limiters.mediawiki }
+    );
+    if (!res.ok) return null;
+
+    interface SinglePagePayload {
+      query?: {
+        pages?: Array<{
+          title?: string;
+          missing?: boolean;
+          extract?: string;
+          revisions?: Array<{
+            timestamp?: string;
+            slots?: { main?: { content?: string } };
+            content?: string;
+          }>;
+        }>;
+      };
+    }
+
+    const data = (await res.json()) as SinglePagePayload;
+    const page = data.query?.pages?.[0];
+    if (!page || page.missing || !page.title) return null;
+
+    const rev = page.revisions?.[0];
+    const wikitext = rev?.slots?.main?.content || rev?.content || '';
+    const openRefs = wikitext.match(/<ref\b[^/>]*>/gi)?.length ?? 0;
+    const selfRefs = wikitext.match(/<ref\b[^>]*\/\s*>/gi)?.length ?? 0;
+
+    return {
+      title: page.title,
+      extract: (page.extract || '').trim(),
+      refCount: openRefs + Math.floor(selfRefs * 0.4),
+      lastRevAt: rev?.timestamp || null,
+    };
+  } catch {
+    return null;
+  }
+}

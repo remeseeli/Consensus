@@ -2,6 +2,8 @@ export type WikiLang = 'fi' | 'sv' | 'ru';
 
 export type MismatchType = 'hard_fact' | 'missing_citation' | 'outdated_data';
 
+export type SemanticMismatchType = MismatchType | 'neutrality_bias';
+
 export type ConfidenceLevel = 'high' | 'medium' | 'low';
 
 export type ExternalCacheProvider =
@@ -150,4 +152,55 @@ export interface ArticleAnalysisResponse {
   overallSummary: string;
   discrepancies: DiscrepancyRecord[];
   analyzedWithLlm: boolean;
+}
+
+export interface MultiLangEditionInput {
+  lang: string;
+  langName?: string;
+  title: string;
+  url?: string | null;
+  extract: string;
+  refCount?: number;
+  citationNeededTags?: number;
+  hasNpovTemplate?: boolean;
+  lastRevAt?: string | null;
+}
+
+export interface SemanticDiscrepancyRecord {
+  id: number;
+  qid: string;
+  mismatchType: SemanticMismatchType;
+  issueLabel: string;
+  targetLang: string;
+  claimTopic: string;
+  summary: string;
+  disputedSnippet: string;
+  highlightPhrase: string | null;
+  snippetEnglishTranslation: string | null;
+  sectionHeading: string | null;
+  lineHint: number | null;
+  suggestedCorrection: string;
+  agreementMatrix: {
+    consensusGroup: string[];
+    outlierGroup: string[];
+    matrixLabel: string;
+    claims: Record<string, EditionClaimStatus>;
+  };
+  citationGapFlag: boolean;
+  donorLang: string | null;
+  severityScore: number;
+  confidenceLevel: ConfidenceLevel;
+  confidenceScore: number;
+  verifiedSources: VerifiedSourceRecord[];
+}
+
+export interface SemanticAnalysisResponse {
+  qid: string;
+  canonicalLabel: string;
+  overallSummary: string;
+  issueBadges: string[];
+  discrepancies: SemanticDiscrepancyRecord[];
+  analyzedWithLlm: boolean;
+  model: string;
+  error?: string;
 }
