@@ -53,15 +53,19 @@ body {
 }
 
 .wb-settings-btn {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 26px;
   height: 26px;
   padding: 0;
-  border: 1px solid #a2a9b1;
-  border-radius: 0;
-  background-color: #ffffff;
+  border: none;
+  border-radius: 2px;
+  background-color: transparent;
   color: #54595d;
   cursor: pointer;
 }
@@ -70,12 +74,11 @@ body {
 .wb-settings-btn[aria-expanded='true'] {
   background-color: #eaecf0;
   color: #202122;
-  border-color: #72777d;
 }
 
 .wb-settings-dropdown {
   position: absolute;
-  top: 42px;
+  top: 80px;
   right: 14px;
   left: 14px;
   z-index: 50;
@@ -188,11 +191,19 @@ body {
   gap: 6px;
 }
 
-.wb-input {
+.wb-search-input-wrap {
+  position: relative;
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.wb-input {
+  width: 100%;
+  min-width: 0;
   height: 34px;
-  padding: 0 10px;
+  padding: 0 34px 0 10px;
   border: 1px solid #a2a9b1;
   border-radius: 0;
   background-color: #ffffff;
@@ -844,6 +855,43 @@ body {
   background-color: #eaecf0;
   color: #202122;
   border-color: #72777d;
+}
+
+.wb-list-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.wb-bookmark-btn {
+  width: auto;
+  padding: 0 6px;
+  gap: 4px;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.wb-bookmark-btn .wb-back-icon {
+  display: none;
+}
+
+.wb-bookmark-btn.is-active {
+  width: 24px;
+  padding: 0;
+  background-color: #eaecf0;
+  border-color: #202122;
+  color: #202122;
+}
+
+.wb-bookmark-btn.is-active .wb-bookmark-icon,
+.wb-bookmark-btn.is-active #saved-count {
+  display: none;
+}
+
+.wb-bookmark-btn.is-active .wb-back-icon {
+  display: inline-block;
 }
 
 .wb-save-mini-btn {

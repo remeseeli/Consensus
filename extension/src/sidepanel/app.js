@@ -133,7 +133,6 @@ const state = {
 const els = {
   searchForm: document.getElementById('search-form'),
   inputTopicQuery: document.getElementById('input-topic-query'),
-  tabDashboard: document.getElementById('tab-dashboard'),
   tabSaved: document.getElementById('tab-saved'),
   savedCount: document.getElementById('saved-count'),
   btnRefreshDashboard: document.getElementById('btn-refresh-dashboard'),
@@ -362,14 +361,15 @@ function updateSavedUiCounts() {
 }
 
 function updateNavTabsUI() {
-  if (els.tabDashboard) {
-    els.tabDashboard.classList.toggle('is-active', state.activeTab === 'dashboard');
-  }
+  const isSaved = state.activeTab === 'saved';
   if (els.tabSaved) {
-    els.tabSaved.classList.toggle('is-active', state.activeTab === 'saved');
+    els.tabSaved.classList.toggle('is-active', isSaved);
+    els.tabSaved.title = isSaved ? 'Back to dashboard' : 'Saved articles';
+    els.tabSaved.setAttribute('aria-label', isSaved ? 'Back to dashboard' : 'Saved articles');
   }
   if (els.btnRefreshDashboard) {
     els.btnRefreshDashboard.classList.toggle('hidden', state.activeTab !== 'dashboard');
+    els.btnRefreshDashboard.title = 'Refresh live pageview risk ranking';
   }
 }
 
@@ -1085,14 +1085,14 @@ els.searchForm.addEventListener('submit', (e) => {
   runSearch();
 });
 
-els.tabDashboard.addEventListener('click', () => {
-  els.inputTopicQuery.value = '';
-  state.currentQuery = '';
-  loadDashboard(false);
-});
-
 els.tabSaved.addEventListener('click', () => {
-  showSavedView();
+  if (state.activeTab === 'saved') {
+    els.inputTopicQuery.value = '';
+    state.currentQuery = '';
+    loadDashboard(false);
+  } else {
+    showSavedView();
+  }
 });
 
 els.btnRefreshDashboard.addEventListener('click', () => {
