@@ -69,7 +69,7 @@ Consensus supports cross-lingual scanning across **17 selectable Wikipedia editi
 - **Database (`db/` — optional):**
   - **MariaDB 11.4+** (`InnoDB`, `utf8mb4_unicode_ci`) via `mysql2`
   - Composite ranking indexes, `FULLTEXT` multilingual search, and SHA-256 keyed TTL response caches
-- **Cloud Deployment & Containerization:** Docker & Docker Compose (`docker-compose.yml`), plus GitHub Actions CI/CD (`.github/workflows/backend-pipeline.yml`) pushing container images to GHCR and deploying to Azure App Service (`DEFAULT_API_BASE_URL` in `extension/src/shared/constants.js` defaults to the hosted Azure backend)
+- **Cloud Deployment & Containerization:** Docker & Docker Compose (`docker-compose.yml`), plus GitHub Actions CI/CD (`.github/workflows/backend-pipeline.yml`) pushing container images to GHCR and deploying to Azure App Service (`DEFAULT_API_BASE_URL` in `extension/src/shared/constants.js` defaults to the hosted Azure backend) Our database is hosted on MariaDB Cloud for this hackathon.
 
 ---
 
